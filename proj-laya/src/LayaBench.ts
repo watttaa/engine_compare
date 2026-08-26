@@ -89,8 +89,7 @@ export class LayaBench {
             '<div class="row"><span class="lbl">数量</span>' +
             '<input id="cnt" type="number" value="10000" step="1000">' +
             '<button id="fixed" class="primary">固定采样</button>' +
-            '<button id="ramp">阶梯压测</button>' +
-            '<button id="sdir">保存目录</button></div>' +
+            '<button id="ramp">阶梯压测</button></div>' +
             '<div class="live" id="out">待命中…</div>' +
             '<div class="tip">固定采样：预热 3s + 采样 10s 出 P50/P95/P99；阶梯压测：每 2s +1000，跌破 55fps 持续 2s 判定承载力。结果 JSON 自动复制。</div>';
         document.body.appendChild(hud);
@@ -108,7 +107,6 @@ export class LayaBench {
         (globalThis as any).BenchRunner.onCopied = () => {
             $out.textContent += ' | 已复制 JSON';
         };
-        hud.querySelector('#sdir')!.addEventListener('click', () => (globalThis as any).BenchRunner.pickSaveDir());
         hud.querySelector('#fixed')!.addEventListener('click', () => {
             loadAssets($v.value, () => {
                 runner.fixedRun({

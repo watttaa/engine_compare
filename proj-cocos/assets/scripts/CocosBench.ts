@@ -147,8 +147,7 @@ export class CocosBench extends Component {
             '<div class="row"><span class="lbl">数量</span>' +
             '<input id="ccnt" type="number" value="10000" step="1000">' +
             '<button id="cfixed" class="primary">固定采样</button>' +
-            '<button id="cramp">阶梯压测</button>' +
-            '<button id="cdir">保存目录</button></div>' +
+            '<button id="cramp">阶梯压测</button></div>' +
             '<div class="live" id="cout">待命中…</div>' +
             '<div class="tip">固定采样：预热 3s + 采样 10s 出 P50/P95/P99；阶梯压测：每 2s +1000，跌破 55fps 持续 2s 判定承载力。结果 JSON 自动复制。</div>';
         document.body.appendChild(hud);
@@ -166,7 +165,6 @@ export class CocosBench extends Component {
         BenchRunner.onSaved = (name: string) => {
             this.outEl.textContent += ' | 已存: ' + name;
         };
-        hud.querySelector('#cdir')!.addEventListener('click', () => BenchRunner.pickSaveDir());
         hud.querySelector('#cfixed')!.addEventListener('click', () =>
             this.runVariant($v.value, parseInt($c.value, 10) || 10000, 'fixed'));
         hud.querySelector('#cramp')!.addEventListener('click', () =>
