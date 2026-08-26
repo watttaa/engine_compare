@@ -106,27 +106,51 @@ export class CocosBench extends Component {
         });
     }
 
-    // ---------------- HUD（DOM 覆盖层） ----------------
+    // ---------------- HUD（DOM 覆盖层，样式对齐 6_21 bunnymark） ----------------
     private outEl!: HTMLElement;
     private buildHud() {
         const runner = this.runner;
+        const style = document.createElement('style');
+        style.textContent =
+            '#hud{position:fixed;left:8px;top:8px;z-index:99998;background:rgba(16,22,30,.86);' +
+            'backdrop-filter:blur(6px);border:1px solid #2b3947;border-radius:10px;padding:10px 12px;' +
+            'color:#e6edf3;font:13px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;' +
+            'width:360px;max-width:92vw;max-height:96vh;overflow:auto}' +
+            '#hud h3{margin:0 0 8px;font-size:13px;color:#7fd4ff;font-weight:600}' +
+            '#hud .row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}' +
+            '#hud .lbl{width:40px;color:#8aa0b4;flex:none;font-size:12px}' +
+            '#hud select,#hud input{background:#0d1218;color:#e6edf3;border:1px solid #33475a;' +
+            'border-radius:7px;padding:4px 8px;font-size:12px}' +
+            '#hud input{width:70px}' +
+            '#hud button{background:#1d2833;color:#cdd9e5;border:1px solid #33475a;' +
+            'border-radius:7px;padding:4px 10px;cursor:pointer;font-size:12px}' +
+            '#hud button:hover:not(:disabled){background:#27405f}' +
+            '#hud button:disabled{opacity:.45;cursor:default}' +
+            '#hud button.primary{background:#2f6feb;border-color:#2f6feb;color:#fff;font-weight:600}' +
+            '#hud .live{background:#0d1218;border:1px solid #2b3947;border-radius:8px;padding:7px 9px;' +
+            'white-space:pre;font:11px/1.6 ui-monospace,Consolas,monospace;color:#9fe8a8}' +
+            '#hud .tip{margin-top:6px;font-size:11.5px;color:#7d93a8;line-height:1.5}';
+        document.head.appendChild(style);
+
         const hud = document.createElement('div');
-        hud.style.cssText = 'position:fixed;bottom:8px;left:8px;z-index:99999;color:#fff;' +
-            'font:12px/1.6 Consolas,monospace;background:rgba(0,0,0,.55);padding:8px 10px;border-radius:4px';
+        hud.id = 'hud';
         hud.innerHTML =
-            'Cocos-3.8.8 | ' +
+            '<h3>🐰 Cocos Creator 3.8.8</h3>' +
+            '<div class="row"><span class="lbl">场景</span>' +
             '<select id="cbv">' +
             '<option value="V1">Bunny V1 同纹理合批</option>' +
             '<option value="V2">Bunny V2 atlas多帧</option>' +
             '<option value="V3">Bunny V3 随机变换</option>' +
             '<option value="V4">Bunny V4 不合批</option>' +
             '<option value="boids">水族馆 2D Boids</option>' +
-            '</select>' +
-            '<input id="ccnt" type="number" value="10000" step="1000" style="width:70px">' +
-            '<button id="cfixed">固定采样</button>' +
+            '</select></div>' +
+            '<div class="row"><span class="lbl">数量</span>' +
+            '<input id="ccnt" type="number" value="10000" step="1000">' +
+            '<button id="cfixed" class="primary">固定采样</button>' +
             '<button id="cramp">阶梯压测</button>' +
-            '<button id="cdir">保存目录</button>' +
-            '<div id="cout">待命中…</div>';
+            '<button id="cdir">保存目录</button></div>' +
+            '<div class="live" id="cout">待命中…</div>' +
+            '<div class="tip">固定采样：预热 3s + 采样 10s 出 P50/P95/P99；阶梯压测：每 2s +1000，跌破 55fps 持续 2s 判定承载力。结果 JSON 自动复制。</div>';
         document.body.appendChild(hud);
         this.outEl = hud.querySelector('#cout') as HTMLElement;
         const $v = hud.querySelector('#cbv') as HTMLSelectElement;
@@ -135,6 +159,9 @@ export class CocosBench extends Component {
         runner.onReport = (json: any) => {
             this.outEl.innerHTML = '完成: ' + JSON.stringify(json).slice(0, 500);
             BenchRunner.exportJSON(json);
+        };
+        BenchRunner.onCopied = () => {
+            this.outEl.textContent += ' | 已复制 JSON';
         };
         BenchRunner.onSaved = (name: string) => {
             this.outEl.textContent += ' | 已存: ' + name;

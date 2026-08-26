@@ -164,23 +164,48 @@
     var runner = new BenchRunner(adapter, stats);
     window.__bench = { adapter: adapter, stats: stats, runner: runner };
 
-    // HUD
+    // HUD（样式对齐 6_21 bunnymark：深色毛玻璃面板）
+    var style = document.createElement('style');
+    style.textContent =
+      '#hud{position:fixed;left:8px;top:8px;z-index:99998;background:rgba(16,22,30,.86);' +
+      'backdrop-filter:blur(6px);border:1px solid #2b3947;border-radius:10px;padding:10px 12px;' +
+      'color:#e6edf3;font:13px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;' +
+      'width:360px;max-width:92vw;max-height:96vh;overflow:auto}' +
+      '#hud h3{margin:0 0 8px;font-size:13px;color:#7fd4ff;font-weight:600}' +
+      '#hud .row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}' +
+      '#hud .lbl{width:40px;color:#8aa0b4;flex:none;font-size:12px}' +
+      '#hud select,#hud input{background:#0d1218;color:#e6edf3;border:1px solid #33475a;' +
+      'border-radius:7px;padding:4px 8px;font-size:12px}' +
+      '#hud input{width:70px}' +
+      '#hud button{background:#1d2833;color:#cdd9e5;border:1px solid #33475a;' +
+      'border-radius:7px;padding:4px 10px;cursor:pointer;font-size:12px}' +
+      '#hud button:hover:not(:disabled){background:#27405f}' +
+      '#hud button:disabled{opacity:.45;cursor:default}' +
+      '#hud button.primary{background:#2f6feb;border-color:#2f6feb;color:#fff;font-weight:600}' +
+      '#hud .live{background:#0d1218;border:1px solid #2b3947;border-radius:8px;padding:7px 9px;' +
+      'white-space:pre;font:11px/1.6 ui-monospace,Consolas,monospace;color:#9fe8a8}' +
+      '#hud .tip{margin-top:6px;font-size:11.5px;color:#7d93a8;line-height:1.5}';
+    document.head.appendChild(style);
+
     var hud = document.createElement('div');
     hud.id = 'hud';
     hud.innerHTML =
-      'Egret-自研5.4.1 | ' +
+      '<h3>🐰 Egret 自研 5.4.1 · WebGL</h3>' +
+      '<div class="row"><span class="lbl">场景</span>' +
       '<select id="bv">' +
       '<option value="V1">Bunny V1 同纹理合批</option>' +
       '<option value="V2">Bunny V2 atlas多帧</option>' +
       '<option value="V3">Bunny V3 随机变换</option>' +
       '<option value="V4">Bunny V4 不合批</option>' +
       '<option value="boids">水族馆 2D Boids</option>' +
-      '</select>' +
-      '<input id="cnt" type="number" value="10000" step="1000" style="width:70px">' +
-      '<button id="fixed">固定采样</button>' +
+      '</select></div>' +
+      '<div class="row"><span class="lbl">数量</span>' +
+      '<input id="cnt" type="number" value="10000" step="1000">' +
+      '<button id="fixed" class="primary">固定采样</button>' +
       '<button id="ramp">阶梯压测</button>' +
-      '<button id="sdir">保存目录</button>' +
-      '<div id="out">待命中…</div>';
+      '<button id="sdir">保存目录</button></div>' +
+      '<div class="live" id="out">待命中…</div>' +
+      '<div class="tip">固定采样：预热 3s + 采样 10s 出 P50/P95/P99；阶梯压测：每 2s +1000，跌破 55fps 持续 2s 判定承载力。结果 JSON 自动复制。</div>';
     document.body.appendChild(hud);
     var $v = document.getElementById('bv'), $c = document.getElementById('cnt'),
       $out = document.getElementById('out');
@@ -203,6 +228,7 @@
     }
     runner.onReport = report;
         BenchRunner.onSaved = function (name) { $out.textContent += ' | 已存: ' + name; };
+        BenchRunner.onCopied = function () { $out.textContent += ' | 已复制 JSON'; };
         document.getElementById('sdir').onclick = function () { BenchRunner.pickSaveDir(); };
 
     document.getElementById('fixed').onclick = function () {
