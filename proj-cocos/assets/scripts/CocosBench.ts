@@ -59,6 +59,29 @@ export class CocosBench extends Component {
         const ts = performance.now();
         this.runner.tick(ts);
         this.adapter.step(ts);
+        this.updateLive(ts);
+    }
+
+    private liveLastTs = 0;
+    private liveFpsEma = 16.7;
+    private liveBackend = '';
+    private updateLive(ts: number) {
+        if (this.liveLastTs) {
+            const d = Math.min(ts - this.liveLastTs, 100);
+            this.liveFpsEma = this.liveFpsEma * 0.9 + d * 0.1;
+        }
+        this.liveLastTs = ts;
+        if (!this.liveEl) return;
+        const now = performance.now();
+        if (now - (this as any)._lastLive > 400) {
+            (this as any)._lastLive = now;
+            const dc = this.adapter.readDrawCalls ? this.adapter.readDrawCalls() : -1;
+            this.liveEl.textContent =
+                '后端: ' + this.liveBackend + '\n' +
+                '数量: ' + this.adapter.nodeCount() + '\n' +
+                'FPS: ' + (1000 / this.liveFpsEma).toFixed(1) + '\n' +
+                (dc >= 0 ? 'drawCall: ' + Math.round(dc) : '');
+        }
     }
 
     private runVariant(variant: string, count: number, mode: 'fixed' | 'ramp') {
@@ -108,14 +131,19 @@ export class CocosBench extends Component {
 
     // ---------------- HUD（DOM 覆盖层，样式对齐 6_21 bunnymark） ----------------
     private outEl!: HTMLElement;
+    private liveEl!: HTMLElement;
     private buildHud() {
         const runner = this.runner;
+        const adapter = this.adapter;
+        // 运行时后端探测
+        this.liveBackend = (typeof navigator !== 'undefined' && (navigator as any).gpu) ? 'webgpu' : 'webgl';
+
         const style = document.createElement('style');
         style.textContent =
             '#hud{position:fixed;left:8px;top:8px;z-index:99998;background:rgba(16,22,30,.86);' +
             'backdrop-filter:blur(6px);border:1px solid #2b3947;border-radius:10px;padding:10px 12px;' +
             'color:#e6edf3;font:13px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;' +
-            'width:360px;max-width:92vw;max-height:96vh;overflow:auto}' +
+            'width:380px;max-width:92vw;max-height:96vh;overflow:auto}' +
             '#hud h3{margin:0 0 8px;font-size:13px;color:#7fd4ff;font-weight:600}' +
             '#hud .row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}' +
             '#hud .lbl{width:40px;color:#8aa0b4;flex:none;font-size:12px}' +
@@ -127,15 +155,21 @@ export class CocosBench extends Component {
             '#hud button:hover:not(:disabled){background:#27405f}' +
             '#hud button:disabled{opacity:.45;cursor:default}' +
             '#hud button.primary{background:#2f6feb;border-color:#2f6feb;color:#fff;font-weight:600}' +
+            '#hud button.danger{background:#7a2f2f;border-color:#7a2f2f;color:#fff}' +
             '#hud .live{background:#0d1218;border:1px solid #2b3947;border-radius:8px;padding:7px 9px;' +
             'white-space:pre;font:11px/1.6 ui-monospace,Consolas,monospace;color:#9fe8a8}' +
+            '#hud .bar{height:4px;background:#0d1218;border-radius:2px;overflow:hidden;margin:6px 0}' +
+            '#hud .bar .fill{height:100%;width:0;background:#2f6feb;transition:width .2s}' +
+            '#hud #report{background:#0d1218;border:1px solid #2b3947;border-radius:8px;padding:7px 9px;' +
+            'white-space:pre-wrap;font:11px/1.6 ui-monospace,Consolas,monospace;color:#cdd9e5;' +
+            'max-height:30vh;overflow:auto;display:none}' +
             '#hud .tip{margin-top:6px;font-size:11.5px;color:#7d93a8;line-height:1.5}';
         document.head.appendChild(style);
 
         const hud = document.createElement('div');
         hud.id = 'hud';
         hud.innerHTML =
-            '<h3>🐰 Cocos Creator 3.8.8</h3>' +
+            '<h3>🐰 Cocos Creator 3.8.8 [' + this.liveBackend + ']</h3>' +
             '<div class="row"><span class="lbl">场景</span>' +
             '<select id="cbv">' +
             '<option value="V1">Bunny V1 同纹理合批</option>' +
@@ -148,27 +182,90 @@ export class CocosBench extends Component {
             '<input id="ccnt" type="number" value="10000" step="1000">' +
             '<button id="cfixed" class="primary">固定采样</button>' +
             '<button id="cramp">阶梯压测</button></div>' +
-            '<div class="live" id="cout">待命中…</div>' +
-            '<div class="tip">固定采样：预热 3s + 采样 10s 出 P50/P95/P99；阶梯压测：每 2s +1000，跌破 55fps 持续 2s 判定承载力。结果 JSON 自动复制。</div>';
+            '<div class="row"><span class="lbl">增减</span>' +
+            '<button id="cadd1k">+1千</button><button id="csub1k">-1千</button>' +
+            '<button id="cadd10k">+1万</button><button id="csub10k">-1万</button></div>' +
+            '<div class="row">' +
+            '<button id="cautoBtn" class="primary">▶ 一键自动测试</button>' +
+            '<button id="cstopBtn" class="danger">停止</button></div>' +
+            '<div class="live" id="clive">等待首帧…</div>' +
+            '<div class="bar"><div class="fill" id="cprogFill"></div></div>' +
+            '<div id="report"></div>' +
+            '<div class="tip">固定采样：预热 3s + 采样 10s 出 P50/P95/P99。一键自动测试：档位阶梯逐级加压（预热1.2s+采样2s），≥55fps 记承载力，&lt;50fps 掉帧即停。结果 JSON 自动复制。</div>';
         document.body.appendChild(hud);
-        this.outEl = hud.querySelector('#cout') as HTMLElement;
+        this.outEl = hud.querySelector('#report') as HTMLElement;
+        this.liveEl = hud.querySelector('#clive') as HTMLElement;
         const $v = hud.querySelector('#cbv') as HTMLSelectElement;
         const $c = hud.querySelector('#ccnt') as HTMLInputElement;
+        const $fill = hud.querySelector('#cprogFill') as HTMLElement;
 
         runner.onReport = (json: any) => {
-            this.outEl.innerHTML = '完成: ' + JSON.stringify(json).slice(0, 500);
+            this.liveEl.textContent = '完成: fps=' + json.fps + ' p50=' + json.p50 + 'ms p95=' + json.p95 +
+                'ms p99=' + json.p99 + 'ms dc=' + json.drawCallAvg + ' nodes=' + json.nodeCount;
             BenchRunner.exportJSON(json);
         };
         BenchRunner.onCopied = () => {
-            this.outEl.textContent += ' | 已复制 JSON';
+            this.liveEl.textContent += ' | 已复制 JSON';
         };
         BenchRunner.onSaved = (name: string) => {
-            this.outEl.textContent += ' | 已存: ' + name;
+            this.liveEl.textContent += ' | 已存: ' + name;
         };
         hud.querySelector('#cfixed')!.addEventListener('click', () =>
             this.runVariant($v.value, parseInt($c.value, 10) || 10000, 'fixed'));
         hud.querySelector('#cramp')!.addEventListener('click', () =>
             this.runVariant($v.value, 0, 'ramp'));
+
+        // 手动加减
+        const bump = (d: number) => {
+            const load = () => {
+                const cur = this.adapter.nodeCount();
+                const next = Math.max(0, cur + d);
+                this.adapter.setCount(next);
+                $c.value = String(next);
+            };
+            if (!this.adapter.sim) { this.loadAssets($v.value, load); } else { load(); }
+        };
+        hud.querySelector('#cadd1k')!.addEventListener('click', () => bump(1000));
+        hud.querySelector('#csub1k')!.addEventListener('click', () => bump(-1000));
+        hud.querySelector('#cadd10k')!.addEventListener('click', () => bump(10000));
+        hud.querySelector('#csub10k')!.addEventListener('click', () => bump(-10000));
+
+        // 一键自动测试
+        hud.querySelector('#cautoBtn')!.addEventListener('click', () => {
+            this.loadAssets($v.value, () => {
+                this.outEl.style.display = 'block';
+                const lines: string[] = ['== 承载力测试 [' + this.liveBackend + ' · ' + $v.value + '] =='];
+                this.outEl.textContent = lines.join('\n');
+                this.runner.autoRamp({
+                    engine: 'cocos-creator-3.8.8', variant: $v.value, backend: this.liveBackend,
+                    onLevel: (lv: any) => {
+                        if (lv.phase === 'start') {
+                            $fill.style.width = (lv.index / lv.total * 100).toFixed(1) + '%';
+                            this.liveEl.textContent = lv.count + ' 只 · 稳定中…';
+                        } else {
+                            $fill.style.width = ((lv.index + 1) / lv.total * 100).toFixed(1) + '%';
+                            const j = lv.json;
+                            lines.push('  ' + lv.count + ' 只: ' + j.fps + 'fps ' +
+                                (lv.stable ? '✓稳' : '✗掉帧') + ' | p95 ' + j.p95 + 'ms | dc ' + j.drawCallAvg);
+                            this.outEl.textContent = lines.join('\n');
+                            BenchRunner.exportJSON(j);
+                        }
+                    },
+                    onDone: (r: any) => {
+                        if (r.capped) lines.push('▶ ⚠ 最高档 ' + r.cap + ' 只仍未掉帧：承载力被天花板截断');
+                        else if (r.jankAt != null) lines.push('▶ 承载力: ' + r.cap + ' 只稳 ≥55fps（' + r.jankAt + ' 只掉帧）');
+                        else lines.push('▶ 承载力: ' + r.cap + ' 只');
+                        this.outEl.textContent = lines.join('\n');
+                        $fill.style.width = '100%';
+                        this.liveEl.textContent = '自动测试完成，承载力 ' + r.cap + ' 只。';
+                    }
+                });
+            });
+        });
+        hud.querySelector('#cstopBtn')!.addEventListener('click', () => {
+            this.runner.stopAuto();
+            this.liveEl.textContent = '已停止。';
+        });
     }
 }
 

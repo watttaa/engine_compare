@@ -138,6 +138,58 @@
     }
   };
 
+  /**
+   * 模式 3：一键承载力（固定档位阶梯，逐档预热+采样，掉帧即停）
+   * 逻辑对齐 6_21 bunnymark 的 runAuto：
+   *   - COUNTS 档位梯（移动端/桌面不同）
+   *   - 每档：setCount → 预热 1.2s → 采样 2s → 记录 fps/p95
+   *   - fps≥55 记为承载力；fps<50 判定掉帧、停止上探
+   * 回调：onLevel({phase:'start'|'done', count, index, total, json, stable})
+   *       onDone({cap, jankAt, capped})
+   */
+  BenchRunner.prototype.autoRamp = function (opts) {
+    var o = opts || {};
+    var IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(global.navigator.userAgent);
+    var COUNTS = o.counts || (IS_MOBILE
+      ? [1000, 2000, 4000, 8000, 15000, 25000, 40000, 60000]
+      : [2000, 5000, 10000, 20000, 40000, 70000, 110000, 160000, 220000, 300000]);
+    var self = this;
+    var cap = 0, jankAt = null, idx = 0;
+    var onLevel = o.onLevel || function () {};
+    var onDone = o.onDone || function () {};
+    this._autoStop = false;
+
+    function step() {
+      if (self._autoStop || idx >= COUNTS.length) {
+        onDone({ cap: cap, jankAt: jankAt, capped: cap >= COUNTS[COUNTS.length - 1] });
+        return;
+      }
+      var n = COUNTS[idx];
+      onLevel({ phase: 'start', count: n, index: idx, total: COUNTS.length });
+      var prevReport = self.onReport;
+      self.onReport = function (json) {
+        self.onReport = prevReport;
+        var stable = json.fps >= 55;
+        var jank = json.fps < 50;
+        if (stable) cap = n;
+        if (jank && jankAt == null) jankAt = n;
+        onLevel({ phase: 'done', count: n, index: idx, total: COUNTS.length, json: json, stable: stable });
+        idx++;
+        if (jank) { onDone({ cap: cap, jankAt: jankAt, capped: false }); return; }
+        step();
+      };
+      self.fixedRun({
+        engine: o.engine || self.stats.meta.engine,
+        variant: o.variant || self.stats.meta.variant,
+        backend: o.backend || self.stats.meta.backend,
+        count: n, preWarmSec: 1.2, sampleSec: 2
+      });
+    }
+    step();
+  };
+
+  BenchRunner.prototype.stopAuto = function () { this._autoStop = true; };
+
   /** 指定结果保存目录（File System Access API，Chrome/Edge 支持）；不指定则回退浏览器下载 */
   BenchRunner.saveDirHandle = null;
   BenchRunner.onSaved = null;  // (fileName) => void

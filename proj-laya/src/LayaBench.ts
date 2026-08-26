@@ -21,6 +21,12 @@ const BUNNY_IMGS = [
 const FISH_IMGS = BUNNY_IMGS.slice(1, 6);
 const RES_PREFIX = 'resources/bench/';
 
+// 实时读数状态（buildHud 与 updateLive 共享）
+let liveEl: HTMLElement | null = null;
+let liveBackend = '';
+let liveLastTs = 0;
+let liveFpsEma = 16.7;
+
 export class LayaBench {
     static start(): void {
         const g: any = globalThis as any;
@@ -48,6 +54,7 @@ export class LayaBench {
             const ts = performance.now();
             runner.tick(ts);
             adapter.step(ts);
+            LayaBench.updateLive(ts, runner, adapter);
         });
 
         // 自动测试：?auto=1&variant=V1&count=10000（编排页用，进入即跑固定采样）
@@ -83,13 +90,34 @@ export class LayaBench {
         }));
     }
 
+    /** 实时读数：每 400ms 刷新一次（对齐 6_21 面板） */
+    private static updateLive(ts: number, runner: any, adapter: any): void {
+        if (liveLastTs) {
+            const dt = Math.min(ts - liveLastTs, 100);
+            liveFpsEma = liveFpsEma * 0.9 + dt * 0.1;
+        }
+        liveLastTs = ts;
+        if (!liveEl) return;
+        const now = performance.now();
+        if (now - (window as any).__layaLastLive > 400) {
+            (window as any).__layaLastLive = now;
+            const dc = adapter.readDrawCalls ? adapter.readDrawCalls() : -1;
+            liveEl.textContent =
+                '后端: ' + liveBackend + '\n' +
+                '数量: ' + adapter.nodeCount() + '\n' +
+                'FPS: ' + (1000 / liveFpsEma).toFixed(1) + '\n' +
+                (dc >= 0 ? 'drawCall: ' + Math.round(dc) : '');
+        }
+    }
+
     private static buildHud(Laya: any, runner: any, adapter: any, backend: string): void {
+        liveBackend = backend;
         const style = document.createElement('style');
         style.textContent =
             '#hud{position:fixed;left:8px;top:8px;z-index:99998;background:rgba(16,22,30,.86);' +
             'backdrop-filter:blur(6px);border:1px solid #2b3947;border-radius:10px;padding:10px 12px;' +
             'color:#e6edf3;font:13px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;' +
-            'width:360px;max-width:92vw;max-height:96vh;overflow:auto}' +
+            'width:380px;max-width:92vw;max-height:96vh;overflow:auto}' +
             '#hud h3{margin:0 0 8px;font-size:13px;color:#7fd4ff;font-weight:600}' +
             '#hud .row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}' +
             '#hud .lbl{width:40px;color:#8aa0b4;flex:none;font-size:12px}' +
@@ -101,8 +129,14 @@ export class LayaBench {
             '#hud button:hover:not(:disabled){background:#27405f}' +
             '#hud button:disabled{opacity:.45;cursor:default}' +
             '#hud button.primary{background:#2f6feb;border-color:#2f6feb;color:#fff;font-weight:600}' +
+            '#hud button.danger{background:#7a2f2f;border-color:#7a2f2f;color:#fff}' +
             '#hud .live{background:#0d1218;border:1px solid #2b3947;border-radius:8px;padding:7px 9px;' +
             'white-space:pre;font:11px/1.6 ui-monospace,Consolas,monospace;color:#9fe8a8}' +
+            '#hud .bar{height:4px;background:#0d1218;border-radius:2px;overflow:hidden;margin:6px 0}' +
+            '#hud .bar .fill{height:100%;width:0;background:#2f6feb;transition:width .2s}' +
+            '#hud #report{background:#0d1218;border:1px solid #2b3947;border-radius:8px;padding:7px 9px;' +
+            'white-space:pre-wrap;font:11px/1.6 ui-monospace,Consolas,monospace;color:#cdd9e5;' +
+            'max-height:30vh;overflow:auto;display:none}' +
             '#hud .tip{margin-top:6px;font-size:11.5px;color:#7d93a8;line-height:1.5}';
         document.head.appendChild(style);
 
@@ -122,23 +156,36 @@ export class LayaBench {
             '<input id="cnt" type="number" value="10000" step="1000">' +
             '<button id="fixed" class="primary">固定采样</button>' +
             '<button id="ramp">阶梯压测</button></div>' +
-            '<div class="live" id="out">待命中…</div>' +
-            '<div class="tip">固定采样：预热 3s + 采样 10s 出 P50/P95/P99；阶梯压测：每 2s +1000，跌破 55fps 持续 2s 判定承载力。结果 JSON 自动复制。</div>';
+            '<div class="row"><span class="lbl">增减</span>' +
+            '<button id="add1k">+1千</button><button id="sub1k">-1千</button>' +
+            '<button id="add10k">+1万</button><button id="sub10k">-1万</button></div>' +
+            '<div class="row">' +
+            '<button id="autoBtn" class="primary">▶ 一键自动测试</button>' +
+            '<button id="stopBtn" class="danger">停止</button></div>' +
+            '<div class="live" id="live">等待首帧…</div>' +
+            '<div class="bar"><div class="fill" id="progFill"></div></div>' +
+            '<div id="report"></div>' +
+            '<div class="tip">固定采样：预热 3s + 采样 10s 出 P50/P95/P99。一键自动测试：档位阶梯逐级加压（预热1.2s+采样2s），≥55fps 记承载力，&lt;50fps 掉帧即停。结果 JSON 自动复制。</div>';
         document.body.appendChild(hud);
         const $v = hud.querySelector('#lv') as HTMLSelectElement;
         const $c = hud.querySelector('#cnt') as HTMLInputElement;
-        const $out = hud.querySelector('#out') as HTMLElement;
+        const $out = hud.querySelector('#report') as HTMLElement;
+        const $live = hud.querySelector('#live') as HTMLElement;
+        const $fill = hud.querySelector('#progFill') as HTMLElement;
+        liveEl = $live;
 
         runner.onReport = (json: any) => {
-            $out.innerHTML = '完成: ' + JSON.stringify(json).slice(0, 500);
+            $live.textContent = '完成: fps=' + json.fps + ' p50=' + json.p50 + 'ms p95=' + json.p95 +
+                'ms p99=' + json.p99 + 'ms dc=' + json.drawCallAvg + ' nodes=' + json.nodeCount;
             (globalThis as any).BenchRunner.exportJSON(json);
         };
         (globalThis as any).BenchRunner.onSaved = (name: string) => {
-            $out.textContent += ' | 已存: ' + name;
+            $live.textContent += ' | 已存: ' + name;
         };
         (globalThis as any).BenchRunner.onCopied = () => {
-            $out.textContent += ' | 已复制 JSON';
+            $live.textContent += ' | 已复制 JSON';
         };
+
         hud.querySelector('#fixed')!.addEventListener('click', () => {
             LayaBench.loadAndRun(Laya, runner, adapter, backend, $v, $c);
         });
@@ -148,8 +195,58 @@ export class LayaBench {
                     engine: 'layaair-3.4.0', variant: $v.value, backend,
                     stepCount: 1000, stepMs: 2000, maxCount: 200000
                 });
-                $out.textContent = '阶梯压测中…';
+                $live.textContent = '阶梯压测中…';
             });
+        });
+
+        // 手动加减
+        const bump = (d: number) => {
+            if (!adapter.sim) { loadAssets($v.value, () => { }); }
+            const cur = adapter.nodeCount();
+            const next = Math.max(0, cur + d);
+            adapter.setCount(next);
+            $c.value = String(next);
+        };
+        hud.querySelector('#add1k')!.addEventListener('click', () => bump(1000));
+        hud.querySelector('#sub1k')!.addEventListener('click', () => bump(-1000));
+        hud.querySelector('#add10k')!.addEventListener('click', () => bump(10000));
+        hud.querySelector('#sub10k')!.addEventListener('click', () => bump(-10000));
+
+        // 一键自动测试（承载力阶梯）
+        hud.querySelector('#autoBtn')!.addEventListener('click', () => {
+            loadAssets($v.value, () => {
+                $out.style.display = 'block';
+                const lines: string[] = ['== 承载力测试 [' + backend + ' · ' + $v.value + '] =='];
+                $out.textContent = lines.join('\n');
+                runner.autoRamp({
+                    engine: 'layaair-3.4.0', variant: $v.value, backend,
+                    onLevel: (lv: any) => {
+                        if (lv.phase === 'start') {
+                            $fill.style.width = (lv.index / lv.total * 100).toFixed(1) + '%';
+                            $live.textContent = lv.count + ' 只 · 稳定中…';
+                        } else {
+                            $fill.style.width = ((lv.index + 1) / lv.total * 100).toFixed(1) + '%';
+                            const j = lv.json;
+                            lines.push('  ' + lv.count + ' 只: ' + j.fps + 'fps ' +
+                                (lv.stable ? '✓稳' : '✗掉帧') + ' | p95 ' + j.p95 + 'ms | dc ' + j.drawCallAvg);
+                            $out.textContent = lines.join('\n');
+                            (globalThis as any).BenchRunner.exportJSON(j);
+                        }
+                    },
+                    onDone: (r: any) => {
+                        if (r.capped) lines.push('▶ ⚠ 最高档 ' + r.cap + ' 只仍未掉帧：承载力被天花板截断');
+                        else if (r.jankAt != null) lines.push('▶ 承载力: ' + r.cap + ' 只稳 ≥55fps（' + r.jankAt + ' 只掉帧）');
+                        else lines.push('▶ 承载力: ' + r.cap + ' 只');
+                        $out.textContent = lines.join('\n');
+                        $fill.style.width = '100%';
+                        $live.textContent = '自动测试完成，承载力 ' + r.cap + ' 只。';
+                    }
+                });
+            });
+        });
+        hud.querySelector('#stopBtn')!.addEventListener('click', () => {
+            runner.stopAuto();
+            $live.textContent = '已停止。';
         });
 
         function loadAssets(variant: string, cb: () => void): void {
