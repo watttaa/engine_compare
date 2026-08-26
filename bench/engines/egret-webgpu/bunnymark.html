@@ -1,0 +1,983 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Egret Bunnymark · WebGPU vs WebGL 后端对比</title>
+    <style>
+        html,
+        body {
+            -ms-touch-action: none;
+            background: #000;
+            padding: 0;
+            border: 0;
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="bootLog"
+        style="position:fixed;left:0;top:0;right:0;z-index:90000;background:rgba(0,0,0,.85);color:#0f0;font:12px/1.5 monospace;padding:8px 10px;white-space:pre-wrap;max-height:50vh;overflow:auto">
+    </div>
+    <script>
+        (function () {
+            var el = document.getElementById('bootLog'); var lines = [];
+            function push(s, color) { lines.push(s); el.innerHTML = lines.join('\n'); if (color) el.style.color = color; }
+            window.__boot = function (s, color) { push('· ' + s, color); };
+            window.addEventListener('error', function (e) { push('✗ ERROR: ' + (e.message || e.error || e) + ' @' + (e.filename || '') + ':' + (e.lineno || ''), '#ff6b6b'); });
+            window.addEventListener('unhandledrejection', function (e) { push('✗ REJECT: ' + ((e.reason && (e.reason.message || e.reason)) || e), '#ff6b6b'); });
+            push('boot: UA=' + navigator.userAgent);
+            push('boot: WebGPU=' + ('gpu' in navigator ? '支持' : '不支持') + ' | 视口=' + window.innerWidth + 'x' + window.innerHeight);
+            el.addEventListener('click', function () { el.style.display = 'none'; });
+        })();
+    </script>
+
+    <div style="margin:auto;width:100%;height:100%;" class="egret-player" data-entry-class="BunnyMarkMain"
+        data-orientation="landscape" data-scale-mode="showAll" data-frame-rate="60" data-content-width="1280"
+        data-content-height="720" data-multi-fingered="2" data-show-fps="false" data-show-log="false"></div>
+
+    <script>
+        var BASE = './';
+        var LIBS = [
+            'libs/modules/egret/egret.js',
+            'libs/modules/egret/egret.web.js'
+        ];
+        function loadScript(list, cb) {
+            var i = 0;
+            (function next() {
+                if (i >= list.length) return cb();
+                var s = document.createElement('script');
+                s.async = false; s.src = list[i] + '?v=' + Math.random();
+                s.onload = function () { s.parentNode.removeChild(s); i++; next(); };
+                s.onerror = function () { console.error('load fail', s.src); i++; next(); };
+                document.body.appendChild(s);
+            })();
+        }
+
+        // 纹理加载（照搬捕鱼项目的 egret.ImageLoader 方式）
+        function loadTex(url) {
+            return new Promise(function (resolve, reject) {
+                var loader = new egret.ImageLoader();
+                loader.crossOrigin = 'anonymous';
+                loader.once(egret.Event.COMPLETE, function () {
+                    var tex = new egret.Texture();
+                    tex.bitmapData = loader.data;
+                    resolve(tex);
+                }, this);
+                loader.once(egret.IOErrorEvent.IO_ERROR, function () { reject(new Error('load fail ' + url)); }, this);
+                loader.load(url);
+            });
+        }
+
+        loadScript(LIBS.map(function (p) { return BASE + p; }), function () {
+
+            // ===== Bunnymark 入口类（移植 godot-bunnymark：12 纹理 / 重力弹跳 / 半透明）=====
+            window.BunnyMarkMain = (function () {
+                function BunnyMarkMain() {
+                    egret.DisplayObjectContainer.call(this);
+                    this.once(egret.Event.ADDED_TO_STAGE, this.onAdd, this);
+                }
+                egret.__extends ? egret.__extends(BunnyMarkMain, egret.DisplayObjectContainer)
+                    : (BunnyMarkMain.prototype = Object.create(egret.DisplayObjectContainer.prototype));
+
+                var TEX_NAMES = [
+                    'rabbitv3_ash', 'rabbitv3_batman', 'rabbitv3_bb8', 'rabbitv3_frankenstein',
+                    'rabbitv3_neo', 'rabbitv3_sonic', 'rabbitv3_spidey', 'rabbitv3_stormtrooper',
+                    'rabbitv3_superman', 'rabbitv3_tron', 'rabbitv3_wolverine', 'rabbitv3'
+                ];
+                var GRAVITY = 1800;    // px/s²，对齐 godot 版 (0.5*60*60)
+                var VMAX0 = 600;       // 初速上限 px/s，对齐 godot 版 (10*60)
+
+                // ===== 变体定义（对齐 bench/BENCHMARK-SPEC.md）=====
+                // V1: 同一张纹理，只改 position          → 测合批上限
+                // V2: 前 8 张轮换 i%8                    → atlas 多帧合批
+                // V3: V1 + 每帧 rotation/scale（确定性公式）→ 变换脏标记
+                // V4: 12 张循环 i%12（相邻必不同）        → 破批提交压力
+                // random: 原版模式（随机纹理 + 50% 半透明，godot 版默认）
+                var VARIANTS = ['V1', 'V2', 'V3', 'V4', 'random'];
+
+                BunnyMarkMain.prototype.onAdd = async function () {
+                    var t = this;
+                    var W = t.stage.stageWidth, H = t.stage.stageHeight;
+                    t._W = W; t._H = H;
+                    window.__boot && window.__boot('舞台就绪 ' + W + 'x' + H);
+
+                    // 背景纯色
+                    var bg = new egret.Shape();
+                    bg.graphics.beginFill(0x1a2330);
+                    bg.graphics.drawRect(0, 0, W, H);
+                    bg.graphics.endFill();
+                    t.addChild(bg);
+
+                    // 兔子容器
+                    t._box = new egret.DisplayObjectContainer();
+                    t.addChild(t._box);
+
+                    // 加载 12 张兔子纹理
+                    t._texs = [];
+                    for (var i = 0; i < TEX_NAMES.length; i++) {
+                        try { t._texs.push(await loadTex(BASE + 'bunny/' + TEX_NAMES[i] + '.png')); }
+                        catch (e) { window.__boot && window.__boot('纹理失败 ' + TEX_NAMES[i]); }
+                    }
+                    window.__boot && window.__boot('兔子纹理 ' + t._texs.length + '/12');
+
+                    // 数据：Bitmap 数组 + 速度分量数组（同索引对应，避免对象开销）
+                    t._bunnies = [];
+                    t._vx = []; t._vy = [];
+
+                    // 物理 ticker
+                    t._lastT = egret.getTimer();
+                    t.stage.addEventListener(egret.Event.ENTER_FRAME, t.tick, t);
+
+                    // 测试 API
+                    t._variant = 'random';   // 默认原版模式
+                    t._rotSpd = [];          // V3: 每兔旋转速度
+                    t._phase = [];           // V3: 每兔相位
+                    window.BunnyBench = {
+                        ready: true,
+                        add: function (n) { t.addBunnies(n | 0); return t._bunnies.length; },
+                        remove: function (n) { t.removeBunnies(n | 0); return t._bunnies.length; },
+                        setCount: function (n) {
+                            n |= 0; var cur = t._bunnies.length;
+                            if (n > cur) t.addBunnies(n - cur); else if (n < cur) t.removeBunnies(cur - n);
+                            return t._bunnies.length;
+                        },
+                        count: function () { return t._bunnies.length; },
+                        variant: function () { return t._variant; },
+                        setVariant: function (v) {
+                            if (VARIANTS.indexOf(v) === -1) return t._variant;
+                            if (v === t._variant) return t._variant;
+                            var n = t._bunnies.length;        // 保持数量，整体重建
+                            t.removeBunnies(n); t._variant = v; t.addBunnies(n);
+                            window.__boot && window.__boot('变体切换 → ' + v + '（重建 ' + n + ' 只）');
+                            return t._variant;
+                        }
+                    };
+
+                    // 初始数量（URL ?bunny= 可调，默认 10000 对齐 godot 版）
+                    var init = Number(new URLSearchParams(location.search).get('bunny'));
+                    if (!init || init < 0) init = 10000;
+                    // 初始变体（URL ?variant=V1|V2|V3|V4|random，默认 random 原版）
+                    var vParam = new URLSearchParams(location.search).get('variant');
+                    if (VARIANTS.indexOf(vParam) !== -1) t._variant = vParam;
+                    t.addBunnies(init);
+                    window.__boot && window.__boot('BunnyMark 就绪，初始 ' + init + ' 只 · 变体 ' + t._variant + ' · 后端 ' + (window.__effectiveBackend || '?'));
+                };
+
+                BunnyMarkMain.prototype.addBunnies = function (n) {
+                    var t = this, box = t._box, texs = t._texs;
+                    if (!texs.length) return;
+                    var v = t._variant;
+                    for (var i = 0; i < n; i++) {
+                        var idx = t._bunnies.length;          // 全局索引（保证轮换稳定）
+                        var tex;
+                        switch (v) {
+                            case 'V1': tex = texs[11]; break;               // rabbitv3 原图（TEX_NAMES 最后一项）
+                            case 'V2': tex = texs[idx % 8]; break;          // 前 8 张轮换
+                            case 'V3': tex = texs[11]; break;               // 同 V1，加变换
+                            case 'V4': tex = texs[idx % 12]; break;         // 12 张循环，相邻必不同
+                            default:  tex = texs[(Math.random() * texs.length) | 0]; // 原版随机
+                        }
+                        var b = new egret.Bitmap(tex);
+                        b.anchorOffsetX = tex.textureWidth / 2;   // 锚点居中，对齐 godot Sprite2D
+                        b.anchorOffsetY = tex.textureHeight / 2;
+                        b.x = 0; b.y = 0;
+                        if (v === 'random' && Math.random() < 0.5) b.alpha = 0.5 + Math.random() * 0.5; // 仅原版半透明
+                        box.addChild(b);
+                        t._bunnies.push(b);
+                        // V3：确定性变换参数（生成时固定，规格：rotSpeed ∈ [-2,2]，phase ∈ [0,2π)）
+                        t._rotSpd.push((Math.random() - 0.5) * 4);
+                        t._phase.push(Math.random() * 6.2832);
+                        var vx = Math.random() * VMAX0, vy = Math.random() * VMAX0;
+                        if (Math.random() > 0.5) vx = -vx;
+                        if (Math.random() > 0.5) vy = -vy;
+                        t._vx.push(vx); t._vy.push(vy);
+                    }
+                };
+
+                BunnyMarkMain.prototype.removeBunnies = function (n) {
+                    var t = this;
+                    n = Math.min(n, t._bunnies.length);
+                    for (var i = 0; i < n; i++) {
+                        var b = t._bunnies.pop();
+                        t._box.removeChild(b);
+                        t._vx.pop(); t._vy.pop();
+                        t._rotSpd.pop(); t._phase.pop();
+                    }
+                };
+
+                // 物理：重力 + 边界弹跳（逐帧，对齐 godot _process）
+                BunnyMarkMain.prototype.tick = function () {
+                    var t = this;
+                    var now = egret.getTimer();
+                    var dt = (now - t._lastT) / 1000; t._lastT = now;
+                    if (dt > 0.05) dt = 0.05;                 // 钳制，防切后台回来爆跳
+                    if (dt <= 0) return;
+                    var W = t._W, H = t._H, g = GRAVITY * dt;
+                    var bs = t._bunnies, vx = t._vx, vy = t._vy, n = bs.length;
+                    var isV3 = t._variant === 'V3';
+                    var rotSpd = t._rotSpd, phase = t._phase;
+                    for (var i = 0; i < n; i++) {
+                        var b = bs[i];
+                        var sx = vx[i], sy = vy[i] + g;         // 先加重力
+                        var px = b.x + sx * dt, py = b.y + sy * dt;
+                        if (px > W) { sx = -sx; px = W; } else if (px < 0) { sx = -sx; px = 0; }
+                        if (py > H) {
+                            sy = -sy * 0.85; py = H;              // 落地衰减反弹
+                            if (Math.random() > 0.5) sy -= Math.random() * 360;   // 随机跳
+                        } else if (py < 0) { sy = 0; py = 0; }
+                        b.x = px; b.y = py;
+                        vx[i] = sx; vy[i] = sy;
+                        if (isV3) {
+                            // 确定性变换（规格：rotation += rotSpeed；scale = 0.75+0.25*sin(phase)，phase += 0.1/帧）
+                            // dt 制按 60fps 归一步进，保持三引擎节奏一致
+                            b.rotation += rotSpd[i] * dt * 60;
+                            phase[i] += 0.1 * dt * 60;
+                            var s = 0.75 + 0.25 * Math.sin(phase[i]);
+                            b.scaleX = s; b.scaleY = s;
+                        }
+                    }
+                };
+
+                return BunnyMarkMain;
+            })();
+
+            // ===== 注入 WebGPU 后端 + 启动（照搬捕鱼项目）=====
+            (async function () {
+                // ===== 帧级探针（两端完全同口径）：在 runEgret 之前包装 rAF =====
+                // egret 的 startTicker 在 runEgret 时把 window.requestAnimationFrame 读进局部变量长期使用，
+                // 故必须在 runEgret 之前替换，才能包住引擎每帧 update+render 的完整主线程耗时。
+                // 同一 vsync 内所有回调共享同一时间戳 → 按 ts 聚合得“每帧主线程总耗时 cb”。
+                window.__frames = [];
+                (function installFrameProbe() {
+                    var raf = window.requestAnimationFrame.bind(window);
+                    var cur = null;
+                    window.requestAnimationFrame = function (cb) {
+                        return raf(function (ts) {
+                            var t0 = performance.now();
+                            try { cb(ts); } finally {
+                                var cbMs = performance.now() - t0;
+                                if (!cur || cur.t !== ts) {
+                                    cur = { t: ts, cb: 0 };
+                                    window.__frames.push(cur);
+                                    if (window.__frames.length > 4000) window.__frames.splice(0, window.__frames.length - 4000);
+                                }
+                                cur.cb += cbMs;
+                            }
+                        });
+                    };
+                })();
+
+                var forced = new URLSearchParams(location.search).get('renderer');
+                var backend = 'webgl', r = null;
+                window.__boot && window.__boot('引擎脚本已加载，开始注入后端…');
+                if (forced !== 'webgl') {
+                    try {
+                        var bust = Date.now() + '_' + Math.random();
+                        var mod = await import('./webgpu-dist/egret-webgpu-boot.js?v=' + bust);
+                        r = await mod.installWebGPUBackendNative({ v: bust });
+                        backend = r.backend; window.__webgpu = r;
+                        window.__boot && window.__boot(backend === 'webgpu' && r.renderer
+                            ? 'WebGPU 已启用，backend=webgpu'
+                            : 'WebGPU 未启用 → 实际 WebGL｜原因: ' + (r && r.error ? r.error : '未知'));
+                        window.__effectiveBackend = (backend === 'webgpu' && r.renderer) ? 'webgpu' : 'webgl';
+                    } catch (e) {
+                        console.warn('[Bunny] WebGPU 注入失败 → WebGL:', e);
+                        window.__boot && window.__boot('WebGPU 注入失败 → 回退 WebGL: ' + (e && e.message || e));
+                    }
+                }
+                window.__effectiveBackend = window.__effectiveBackend || backend;
+
+                // WebGL 指标探针：drawElements/drawArrays 计数 + CPU 耗时
+                if (backend === 'webgl') {
+                    (function installWebGLProbe() {
+                        var proto = window.WebGLRenderingContext && WebGLRenderingContext.prototype;
+                        var proto2 = window.WebGL2RenderingContext && WebGL2RenderingContext.prototype;
+                        if (!proto || proto.__bunnyProbe) return;
+                        proto.__bunnyProbe = true; if (proto2) proto2.__bunnyProbe = true;
+                        window.__webglProbe = {
+                            drawTotal: 0, frameTotal: 0, cpuTotal: 0,
+                            lastDrawTotal: 0, lastFrameTotal: 0, lastCpuTotal: 0
+                        };
+                        function hook(p) {
+                            if (!p || p.__bunnyDrawHooked) return;
+                            p.__bunnyDrawHooked = true;
+                            var de = p.drawElements, da = p.drawArrays;
+                            p.drawElements = function () {
+                                var t0 = performance.now(); var res = de.apply(this, arguments);
+                                var pb = window.__webglProbe; pb.drawTotal++; pb.cpuTotal += performance.now() - t0;
+                                return res;
+                            };
+                            p.drawArrays = function () {
+                                var t0 = performance.now(); var res = da.apply(this, arguments);
+                                var pb = window.__webglProbe; pb.drawTotal++; pb.cpuTotal += performance.now() - t0;
+                                return res;
+                            };
+                        }
+                        hook(proto); hook(proto2);
+                        (function fc() { window.__webglProbe.frameTotal++; requestAnimationFrame(fc); })();
+                    })();
+                }
+
+                window.__boot && window.__boot('调用 runEgret，renderMode=' + (backend === 'webgpu' ? 'webgpu' : 'webgl'));
+                egret.runEgret({ renderMode: backend === 'webgpu' ? 'webgpu' : 'webgl', audioType: 0 });
+
+                // ===== 指标采集 HUD =====
+                // 主口径：帧级探针 __frames → 两端完全同口径的“每帧主线程渲染耗时 renderMs / 实际帧时长 frameMs”。
+                // 细节：WebGPU submitMs（_cpuSubmitAccum 段）、WebGL drawMs（仅 draw 调用耗时）、drawCall。
+                var hud = document.createElement('div');
+                hud.style.cssText = 'position:fixed;right:8px;top:8px;z-index:99999;background:rgba(0,0,0,.8);color:#0f0;font:12px monospace;padding:6px 10px;border-radius:6px;white-space:pre;pointer-events:none;text-align:right';
+                document.body.appendChild(hud);
+
+                window.__stats = { backend: backend };
+                setInterval(function () {
+                    // 主口径：取最近 1s 的帧记录
+                    var fr = window.__frames, cut = performance.now() - 1000;
+                    var i = fr.length - 1, cnt = 0, cbSum = 0, firstT = 0, lastT = 0;
+                    for (; i >= 0; i--) {
+                        var f = fr[i];
+                        if (f.t < cut) break;
+                        if (!cnt) lastT = f.t;
+                        firstT = f.t; cbSum += f.cb; cnt++;
+                    }
+                    var fps = 0, frameMs = 0, renderMs = null, renderPct = null;
+                    if (cnt > 1 && lastT > firstT) {
+                        frameMs = (lastT - firstT) / (cnt - 1);
+                        fps = Math.round(1000 / frameMs);
+                        renderMs = cbSum / cnt;
+                        renderPct = renderMs / frameMs * 100;
+                    }
+
+                    // drawCall + 后端细节
+                    var wr = window.__webgpu && window.__webgpu.renderer;
+                    var wp = window.__webglProbe;
+                    var drawCall = wr && wr._lastBatchCount != null ? wr._lastBatchCount
+                        : (wr && wr._lastDrawCalls != null ? wr._lastDrawCalls : null);
+                    var submitMs = null, drawMs = null;
+                    if (wr && wr._cpuSubmitFrames != null) {
+                        var af = wr._cpuSubmitFrames - (wr.__lastCpuFrames || 0);
+                        var aa = wr._cpuSubmitAccum - (wr.__lastCpuAccum || 0);
+                        if (af > 0) submitMs = aa / af;
+                        wr.__lastCpuFrames = wr._cpuSubmitFrames;
+                        wr.__lastCpuAccum = wr._cpuSubmitAccum;
+                    }
+                    if (wp && backend === 'webgl') {
+                        var fd = wp.frameTotal - wp.lastFrameTotal;
+                        var dd = wp.drawTotal - wp.lastDrawTotal;
+                        var cd = wp.cpuTotal - wp.lastCpuTotal;
+                        drawCall = fd > 0 ? dd / fd : null;
+                        drawMs = fd > 0 ? cd / fd : null;   // 仅 draw 调用耗时（细节，非完整 CPU）
+                        wp.lastFrameTotal = wp.frameTotal;
+                        wp.lastDrawTotal = wp.drawTotal;
+                        wp.lastCpuTotal = wp.cpuTotal;
+                    }
+
+                    var bc = window.BunnyBench ? window.BunnyBench.count() : 0;
+                    window.__live = {
+                        fps: fps, frameMs: frameMs, renderMs: renderMs, renderPct: renderPct,
+                        drawCall: drawCall, submitMs: submitMs, drawMs: drawMs, bunnyCount: bc
+                    };
+                    hud.textContent = '后端: ' + (window.__effectiveBackend || backend) + '\nFPS: ' + fps
+                        + '\n兔子: ' + bc
+                        + (renderMs != null ? '\n渲染主线程: ' + renderMs.toFixed(3) + 'ms (' + renderPct.toFixed(1) + '%帧)' : '')
+                        + (drawCall != null ? '\ndrawCall: ' + Math.round(drawCall) : '')
+                        + (submitMs != null ? '\n[WebGPU submit ' + submitMs.toFixed(3) + 'ms]' : '')
+                        + (drawMs != null ? '\n[WebGL draw ' + drawMs.toFixed(3) + 'ms]' : '')
+                        + (wr ? '\n[合批槽=' + wr._texSlots + ' 多纹理=' + wr._multiTex + ']' : '');
+                }, 500);
+            })();
+        });
+    </script>
+
+    <!-- ===== 测试面板（形态对齐捕鱼项目 benchPanel）===== -->
+    <style>
+        #bunnyPanel {
+            position: fixed;
+            left: 8px;
+            top: 8px;
+            z-index: 99998;
+            background: rgba(16, 22, 30, .86);
+            backdrop-filter: blur(6px);
+            border: 1px solid #2b3947;
+            border-radius: 10px;
+            padding: 10px 12px;
+            color: #e6edf3;
+            font: 13px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+            max-width: min(92vw, 380px);
+            width: 360px;
+            max-height: 96vh;
+            overflow: auto;
+        }
+
+        #bunnyPanel h3 {
+            margin: 0 0 8px;
+            font-size: 13px;
+            color: #7fd4ff;
+            font-weight: 600;
+        }
+
+        #bunnyPanel .row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 6px 0;
+            flex-wrap: wrap;
+        }
+
+        #bunnyPanel .lbl {
+            width: 40px;
+            color: #8aa0b4;
+            flex: none;
+        }
+
+        #bunnyPanel button {
+            background: #1d2833;
+            color: #cdd9e5;
+            border: 1px solid #33475a;
+            border-radius: 7px;
+            padding: 4px 10px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        #bunnyPanel button:hover:not(:disabled) {
+            background: #27405f;
+        }
+
+        #bunnyPanel button:disabled {
+            opacity: .45;
+            cursor: default;
+        }
+
+        /* 当前生效后端高亮，跟捕鱼面板一致 */
+        #bunnyPanel button.on {
+            background: #2f6feb;
+            border-color: #2f6feb;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        #bunnyPanel button.primary {
+            background: #2f6feb;
+            border-color: #2f6feb;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        #bunnyPanel button.danger {
+            background: #5c1414;
+            border-color: #a33;
+            color: #ffd9d9;
+        }
+
+        #bunnyPanel .val {
+            min-width: 48px;
+            text-align: right;
+            color: #ffd479;
+            font-weight: 600;
+        }
+
+        #bunnyPanel .live {
+            background: #0d1218;
+            border: 1px solid #2b3947;
+            border-radius: 8px;
+            padding: 7px 9px;
+            white-space: pre;
+            font: 11px/1.6 ui-monospace, Consolas, monospace;
+            color: #9fe8a8;
+        }
+
+        #bunnyPanel .tip {
+            margin-top: 6px;
+            font-size: 11.5px;
+            color: #7d93a8;
+            line-height: 1.5;
+        }
+
+        /* 进度条：两个后端各占一半，直观显示"跑完两端" */
+        #bunnyProg {
+            display: none;
+            margin-top: 8px;
+        }
+
+        #bunnyProg .bar {
+            height: 6px;
+            background: #0d1218;
+            border: 1px solid #2b3947;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        #bunnyProg .fill {
+            height: 100%;
+            width: 0;
+            background: linear-gradient(90deg, #2f6feb, #7fd4ff);
+            transition: width .3s;
+        }
+
+        #bunnyProg .txt {
+            font-size: 11px;
+            color: #8aa0b4;
+            margin-top: 4px;
+        }
+
+        #bunnyPanel .cmp {
+            margin-top: 8px;
+        }
+
+        #bunnyPanel table {
+            border-collapse: collapse;
+            width: 100%;
+            font-size: 11px;
+            margin: 4px 0;
+        }
+
+        #bunnyPanel th,
+        #bunnyPanel td {
+            border: 1px solid #2c405e;
+            padding: 3px 5px;
+            text-align: center;
+        }
+
+        #bunnyPanel th {
+            background: #16283f;
+            color: #9cc4ef;
+            font-weight: 600;
+        }
+
+        #bunnyPanel .good {
+            color: #6fe39b;
+            font-weight: bold;
+            margin: 4px 0;
+        }
+
+        #bunnyPanel pre {
+            display: none;
+            margin-top: 8px;
+            max-height: 34vh;
+            overflow: auto;
+            white-space: pre-wrap;
+            font: 11px/1.5 ui-monospace, Consolas, monospace;
+            color: #cdd9e5;
+            background: #0d1218;
+            border: 1px solid #2b3947;
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+    </style>
+    <div id="bunnyPanel">
+        <h3>🐰 Egret Bunnymark · WebGPU vs WebGL</h3>
+        <div class="row"><span class="lbl">后端</span>
+            <button id="bkWebgpu">WebGPU</button>
+            <button id="bkWebgl">WebGL</button>
+            <span class="val" id="bkNow" style="color:#7d93a8;font-weight:400"></span>
+        </div>
+        <div class="row"><span class="lbl">变体</span>
+            <select id="variantSel" style="background:#1d2833;color:#cdd9e5;border:1px solid #33475a;border-radius:7px;padding:4px 8px;font-size:12px">
+                <option value="V1">V1 同纹理（合批上限）</option>
+                <option value="V2">V2 8纹理轮换（atlas合批）</option>
+                <option value="V3">V3 变换（rotation+scale）</option>
+                <option value="V4">V4 12纹理相邻异（破批）</option>
+                <option value="random" selected>random 原版（随机+半透明）</option>
+            </select>
+        </div>
+        <div class="live" id="liveBox">等待引擎启动…</div>
+        <div class="row"><span class="lbl">兔子</span>
+            <button id="add1k">+1千</button>
+            <button id="sub1k">-1千</button>
+            <button id="add10k">+1万</button>
+            <button id="sub10k">-1万</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+            <button id="autoBtn" class="primary">▶ 一键自动测试</button>
+            <button id="stopBtn" class="danger">停止</button>
+        </div>
+        <div class="row">
+            <button id="oneBtn">只测当前后端</button>
+            <button id="clearBtn">清空历史</button>
+        </div>
+        <div id="bunnyProg">
+            <div class="bar">
+                <div class="fill" id="progFill"></div>
+            </div>
+            <div class="txt" id="progTxt"></div>
+        </div>
+        <div class="tip">一键自动测试：当前后端逐级加兔子测到掉帧 → 自动切另一后端再测一遍 → 出对比结论。中途请勿切走标签页（后台 rAF 会降频）。</div>
+        <div class="cmp" id="cmpBox"></div>
+        <pre id="report"></pre>
+    </div>
+
+    <script>
+        (function () {
+            var $ = function (id) { return document.getElementById(id); };
+            var IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+            // 档位上探到很高：若最高档仍不掉帧，承载力就被天花板截断，
+            // 算出的"WebGPU 是 WebGL 的 N 倍"只是下限而非真实倍数。
+            var COUNTS = IS_MOBILE
+                ? [1000, 2000, 4000, 8000, 15000, 25000, 40000, 60000]
+                : [2000, 5000, 10000, 20000, 40000, 70000, 110000, 160000, 220000, 300000];
+            var JANK_FPS = 50;
+            var autoRunning = false;
+            // 连测状态：跨页面重载传递（后端切换必须重载页面）
+            var CHAIN_KEY = 'bunnyChain';
+
+            // ---- 后端切换（重载页面，保留当前 variant）----
+            function switchBackend(bk) {
+                var u = new URL(location.href);
+                if (bk === 'webgl') u.searchParams.set('renderer', 'webgl');
+                else u.searchParams.delete('renderer');
+                var v = $('variantSel') && $('variantSel').value;
+                if (v) u.searchParams.set('variant', v);
+                location.href = u.toString();
+            }
+            $('bkWebgpu').onclick = function () { switchBackend('webgpu'); };
+            $('bkWebgl').onclick = function () { switchBackend('webgl'); };
+
+            // ---- 变体切换（不重载页面，原地重建兔子）----
+            $('variantSel').onchange = function () {
+                var v = this.value;
+                if (window.BunnyBench && window.BunnyBench.ready) {
+                    window.BunnyBench.setVariant(v);
+                } else {
+                    // 引擎未就绪：写 URL，等就绪后由初始逻辑生效
+                    var u = new URL(location.href);
+                    u.searchParams.set('variant', v);
+                    history.replaceState(null, '', u.toString());
+                }
+            };
+            // 初始下拉框同步 URL
+            (function initVariantSel() {
+                var v = new URLSearchParams(location.search).get('variant');
+                if (v && $('variantSel')) {
+                    var opt = $('variantSel').querySelector('option[value="' + v + '"]');
+                    if (opt) $('variantSel').value = v;
+                }
+            })();
+
+            // ---- 进度条：两个后端各占一半 ----
+            // chainNext 时总步数翻倍，让"跑完两端"在进度上是连续的一条，而不是两次 0→100%
+            var progState = { total: 0, done: 0 };
+            function progInit(total) {
+                progState.total = total; progState.done = 0;
+                $('bunnyProg').style.display = 'block';
+                progUpdate('');
+            }
+            function progUpdate(label) {
+                var pct = progState.total ? Math.min(100, progState.done / progState.total * 100) : 0;
+                $('progFill').style.width = pct.toFixed(1) + '%';
+                $('progTxt').textContent = label;
+            }
+            function progDone() { $('bunnyProg').style.display = 'none'; }
+
+            // ---- 实时读数 ----
+            // 当前生效后端高亮（之前只在文本里写，容易看漏 → 前面有两次两端都测成 WebGL）
+            (function markBackend() {
+                var bk = window.__effectiveBackend;
+                if (!bk) return setTimeout(markBackend, 200);
+                $(bk === 'webgpu' ? 'bkWebgpu' : 'bkWebgl').classList.add('on');
+                $('bkNow') && ($('bkNow').textContent = '当前 ' + bk);
+            })();
+
+            setInterval(function () {
+                var L = window.__live;
+                if (!L) return;
+                var v = (window.BunnyBench && window.BunnyBench.variant) ? window.BunnyBench.variant() : '?';
+                $('liveBox').textContent =
+                    '后端: ' + (window.__effectiveBackend || '?') + ' · 变体: ' + v + '\n' +
+                    '兔子: ' + L.bunnyCount + '\n' +
+                    'FPS: ' + L.fps + '\n' +
+                    (L.renderMs != null ? '渲染主线程: ' + L.renderMs.toFixed(3) + 'ms (' + L.renderPct.toFixed(1) + '%帧)\n' : '') +
+                    (L.drawCall != null ? 'drawCall: ' + Math.round(L.drawCall) + '\n' : '') +
+                    (L.submitMs != null ? '[WebGPU submit ' + L.submitMs.toFixed(3) + 'ms]\n' : '') +
+                    (L.drawMs != null ? '[WebGL draw ' + L.drawMs.toFixed(3) + 'ms]' : '');
+            }, 400);
+
+            // ---- 等待引擎就绪 ----
+            function waitReady(timeoutMs) {
+                return new Promise(function (resolve, reject) {
+                    var t0 = Date.now();
+                    (function poll() {
+                        if (window.BunnyBench && window.BunnyBench.ready) return resolve();
+                        if (Date.now() - t0 > (timeoutMs || 20000)) return reject(new Error('引擎启动超时'));
+                        setTimeout(poll, 100);
+                    })();
+                });
+            }
+
+            // ---- 手动加减 ----
+            function doAdd(n) { if (window.BunnyBench) window.BunnyBench.add(n); }
+            function doSub(n) { if (window.BunnyBench) window.BunnyBench.remove(n); }
+            $('add1k').onclick = function () { doAdd(1000); };
+            $('sub1k').onclick = function () { doSub(1000); };
+            $('add10k').onclick = function () { doAdd(10000); };
+            $('sub10k').onclick = function () { doSub(10000); };
+
+            // ---- 工具 ----
+            function median(a) {
+                if (!a.length) return 0;
+                var s = a.slice().sort(function (x, y) { return x - y; });
+                var m = s.length >> 1;
+                return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+            }
+            function mean(a) {
+                if (!a.length) return 0;
+                var t = 0; for (var i = 0; i < a.length; i++) t += a[i];
+                return t / a.length;
+            }
+            function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+            // 帧级采样：直接读 __frames 环缓冲，窗口内数百帧 → 高统计功效
+            function measure(ms) {
+                return new Promise(function (resolve) {
+                    var cut = performance.now();
+                    setTimeout(function () {
+                        var fr = window.__frames, gaps = [], cbs = [], prev = 0;
+                        for (var i = 0; i < fr.length; i++) {
+                            var f = fr[i];
+                            if (f.t < cut) continue;
+                            if (prev) gaps.push(f.t - prev);
+                            prev = f.t;
+                            cbs.push(f.cb);
+                        }
+                        if (cbs.length < 2) return resolve(null);
+                        var frameMs = mean(gaps);
+                        var renderMs = mean(cbs);
+                        var L = window.__live || {};   // drawCall/submit/draw 细节取窗口末快照（同档兔子数下恒定）
+                        resolve({
+                            fps: frameMs > 0 ? Math.round(1000 / frameMs) : 0,
+                            frameMs: frameMs,
+                            renderMs: renderMs,
+                            renderPct: frameMs > 0 ? renderMs / frameMs * 100 : null,
+                            dc: L.drawCall != null ? L.drawCall : null,
+                            submitMs: L.submitMs != null ? L.submitMs : null,
+                            drawMs: L.drawMs != null ? L.drawMs : null
+                        });
+                    }, ms);
+                });
+            }
+
+            // ---- 一键承载力测试 ----
+            // chainNext: 本轮结束后是否自动切到另一后端继续（实现"点一下跑完两端"）
+            async function runAuto(device, backend, chainNext, progBase, progTotal) {
+                autoRunning = true;
+                $('autoBtn').disabled = true; $('oneBtn').disabled = true;
+                var rep = $('report'); rep.style.display = 'block';
+                var curVariant = (window.BunnyBench && window.BunnyBench.variant) ? window.BunnyBench.variant() : 'random';
+                var lines = ['== 承载力测试 [' + backend + ' · ' + device + ' · 变体' + curVariant + '] ' + new Date().toLocaleString() + ' =='];
+                rep.textContent = lines.join('\n');
+
+                // 进度：连测时总步数含两个后端，进度条一路走到底不回退
+                progState.total = progTotal || COUNTS.length;
+                progState.done = progBase || 0;
+                $('bunnyProg').style.display = 'block';
+                progUpdate(backend + ' 准备中…');
+
+                var samples = [], jankAt = null, cap = 0;
+                for (var i = 0; i < COUNTS.length; i++) {
+                    if (!autoRunning) break;
+                    var n = COUNTS[i];
+                    window.BunnyBench.setCount(n);
+                    progUpdate(backend + ' · ' + n + ' 只 稳定中…');
+                    lines.push('→ ' + n + ' 只…稳定中'); rep.textContent = lines.join('\n');
+                    await sleep(1200);                                   // 等稳定
+                    if (!autoRunning) break;
+                    progUpdate(backend + ' · ' + n + ' 只 采样中…');
+                    var m = await measure(2000);                         // 帧级采样 2s（数百帧）
+                    progState.done++;
+                    progUpdate(backend + ' · ' + n + ' 只 完成');
+                    if (!m) continue;
+                    samples.push({ n: n, real: window.BunnyBench.count(), fps: m.fps, renderMs: m.renderMs, renderPct: m.renderPct, dc: m.dc, submitMs: m.submitMs, drawMs: m.drawMs });
+                    var tag = m.fps >= JANK_FPS ? '✓稳' : '✗掉帧';
+                    lines.push('  ' + n + ' 只: ' + m.fps + 'fps ' + tag
+                        + (m.renderMs != null ? ' | 渲染 ' + m.renderMs.toFixed(2) + 'ms(' + m.renderPct.toFixed(0) + '%帧)' : '')
+                        + (m.dc != null ? ' | draw ' + Math.round(m.dc) : ''));
+                    rep.textContent = lines.join('\n');
+                    if (m.fps >= 55) cap = n;                            // 最高稳帧档 = 承载力
+                    if (m.fps < JANK_FPS) {
+                        // 已掉帧就停止上探：再加压只会让页面卡到近乎无响应，
+                        // 且对"承载力上限"这个结论没有信息增量。
+                        if (jankAt == null) jankAt = n;
+                        lines.push('  （已掉帧，停止上探）');
+                        rep.textContent = lines.join('\n');
+                        break;
+                    }
+                }
+                if (cap >= COUNTS[COUNTS.length - 1]) {
+                    lines.push('▶ ⚠ 最高档 ' + cap + ' 只仍未掉帧：承载力被档位天花板截断，真实值更高');
+                } else if (jankAt) {
+                    lines.push('▶ 承载力: ' + cap + ' 只稳 ≥55fps（' + jankAt + ' 只掉帧）');
+                } else {
+                    lines.push('▶ 承载力: ' + cap + ' 只');
+                }
+                rep.textContent = lines.join('\n');
+
+                // 存档。device 带上后端无关的环境指纹，避免不同浏览器/分辨率被误当同一组。
+                var curVariant = (window.BunnyBench && window.BunnyBench.variant) ? window.BunnyBench.variant() : 'random';
+                var runs = [];
+                try { runs = JSON.parse(localStorage.getItem('bunnyBenchRuns3') || '[]'); } catch (e) { runs = []; }
+                runs.push({
+                    device: device, backend: backend, variant: curVariant, ts: Date.now(),
+                    samples: samples, cap: cap, jankAt: jankAt,
+                    capped: cap >= COUNTS[COUNTS.length - 1],
+                    text: lines.join('\n')
+                });
+                if (runs.length > 40) runs = runs.slice(-40);
+                localStorage.setItem('bunnyBenchRuns3', JSON.stringify(runs));
+
+                autoRunning = false;
+                $('autoBtn').disabled = false; $('oneBtn').disabled = false;
+                renderCompare();
+
+                // ---- 连测：切到另一后端，重载后自动继续 ----
+                if (chainNext && autoRunningWasNotStopped()) {
+                    var other = backend === 'webgpu' ? 'webgl' : 'webgpu';
+                    lines.push('');
+                    lines.push('▶ 3 秒后自动切换到 ' + other + ' 继续测…');
+                    rep.textContent = lines.join('\n');
+                    progUpdate('即将切换到 ' + other + '…');
+                    // 把已完成步数带过去，重载后进度条接着走而不是归零
+                    sessionStorage.setItem(CHAIN_KEY, JSON.stringify({
+                        run: true, expect: other,
+                        progBase: progState.done, progTotal: progState.total
+                    }));
+                    await sleep(3000);
+                    switchBackend(other);
+                } else {
+                    progDone();
+                }
+            }
+
+            // 用户点了停止时 autoRunning 被置 false，此时不应再自动切后端
+            var stoppedByUser = false;
+            function autoRunningWasNotStopped() { return !stoppedByUser; }
+
+            function startRun(chainNext) {
+                stoppedByUser = false;
+                var backend = window.__effectiveBackend || 'webgl';
+                // device 不含后端，renderCompare 才能把两后端配成一对；
+                // 但要含环境指纹，否则换浏览器/换分辨率的旧数据会被静默覆盖。
+                var device = (IS_MOBILE ? 'mobile' : 'desktop') + '·' + screen.width + 'x' + screen.height;
+                // 连测：总步数按两个后端算
+                var total = chainNext ? COUNTS.length * 2 : COUNTS.length;
+                return waitReady().then(function () {
+                    return runAuto(device, backend, chainNext, 0, total);
+                }).catch(function (e) {
+                    $('report').style.display = 'block';
+                    $('report').textContent = '✗ ' + (e && e.message || e);
+                    sessionStorage.removeItem(CHAIN_KEY);
+                    progDone();
+                });
+            }
+
+            $('autoBtn').onclick = function () { startRun(true); };
+            $('oneBtn').onclick = function () { startRun(false); };
+            $('stopBtn').onclick = function () {
+                autoRunning = false;
+                stoppedByUser = true;
+                sessionStorage.removeItem(CHAIN_KEY);   // 停止要一并取消连测，否则重载后又自己跑起来
+                progDone();
+            };
+            $('clearBtn').onclick = function () {
+                localStorage.removeItem('bunnyBenchRuns3');
+                sessionStorage.removeItem(CHAIN_KEY);
+                $('cmpBox').innerHTML = ''; $('report').style.display = 'none';
+            };
+
+            // ---- 重载后自动续跑另一后端 ----
+            (function resumeChain() {
+                var raw = sessionStorage.getItem(CHAIN_KEY);
+                if (!raw) return;
+                sessionStorage.removeItem(CHAIN_KEY);   // 先清，避免异常时无限重载
+                var st; try { st = JSON.parse(raw); } catch (e) { return; }
+                if (!st || !st.run) return;
+                waitReady().then(function () {
+                    var actual = window.__effectiveBackend || 'webgl';
+                    // 期望切到 webgpu 但实际回落 webgl（设备不支持）→ 不再连测，避免同后端测两遍生成假对比
+                    if (st.expect && actual !== st.expect) {
+                        $('report').style.display = 'block';
+                        $('report').textContent = '✗ 期望后端 ' + st.expect + '，实际为 ' + actual + '（可能不支持 WebGPU），已中止连测';
+                        progDone();
+                        return;
+                    }
+                    var device = (IS_MOBILE ? 'mobile' : 'desktop') + '·' + screen.width + 'x' + screen.height;
+                    return runAuto(device, actual, false, st.progBase || 0, st.progTotal || COUNTS.length);
+                }).catch(function (e) {
+                    $('report').style.display = 'block';
+                    $('report').textContent = '✗ 续测失败: ' + (e && e.message || e);
+                    progDone();
+                });
+            })();
+
+            // ---- 跨后端对比（FPS一致 → CPU/drawCall 省多少）----
+            function renderCompare() {
+                var runs = [];
+                try { runs = JSON.parse(localStorage.getItem('bunnyBenchRuns3') || '[]'); } catch (e) { runs = []; }
+                var box = $('cmpBox');
+                if (!runs.length) { box.innerHTML = ''; return; }
+                // 按设备+变体分组，取各后端最新一轮（不同变体压力特征不同，禁止跨变体对比）
+                var byDev = {};
+                runs.forEach(function (r) {
+                    var d = (r.device || '?') + '·' + (r.variant || 'random');
+                    byDev[d] = byDev[d] || {};
+                    byDev[d][r.backend] = r;   // 后来者覆盖 → 最新
+                });
+                var html = '';
+                Object.keys(byDev).forEach(function (dev) {
+                    var g = byDev[dev], a = g.webgpu, b = g.webgl;
+                    if (!a || !b) {
+                        html += '<p style="color:#8aa0bd">[' + dev + '] 还缺 ' + (a ? 'WebGL' : 'WebGPU') + ' 一轮数据，切换后端再测一次即可对比</p>';
+                        return;
+                    }
+                    // 按兔子数对齐两后端档位
+                    var map = {};
+                    a.samples.forEach(function (s) { map[s.n] = { a: s }; });
+                    b.samples.forEach(function (s) { (map[s.n] = map[s.n] || {}).b = s; });
+                    var rows = '', matched = [];
+                    Object.keys(map).map(Number).sort(function (x, y) { return x - y; }).forEach(function (n) {
+                        var p = map[n];
+                        if (!p.a || !p.b) return;
+                        var ok = p.a.fps >= 55 && p.b.fps >= 55;
+                        if (ok && p.a.renderMs != null && p.b.renderMs != null && p.b.renderMs > 0 && p.a.renderMs > 0) {
+                            matched.push({ n: n, cpuR: p.b.renderMs / p.a.renderMs, dcR: (p.a.dc && p.b.dc) ? p.b.dc / p.a.dc : null });
+                        }
+                        rows += '<tr' + (ok ? '' : ' style="opacity:.45"') + '><td>' + n + '</td>'
+                            + '<td>' + p.a.fps + '/' + p.b.fps + '</td>'
+                            + '<td>' + (p.a.renderMs != null ? p.a.renderMs.toFixed(2) : '?') + '/' + (p.b.renderMs != null ? p.b.renderMs.toFixed(2) : '?') + '</td>'
+                            + '<td>' + (p.a.dc != null ? Math.round(p.a.dc) : '?') + '/' + (p.b.dc != null ? Math.round(p.b.dc) : '?') + '</td>'
+                            + '<td>' + (ok ? '✓' : '✗') + '</td></tr>';
+                    });
+                    // 承载力：各后端维持 ≥55fps 的最高兔子数（真实差距所在）
+                    var capA = a.cap || 0, capB = b.cap || 0;
+                    if (!capA) a.samples.forEach(function (s) { if (s.fps >= 55 && s.n > capA) capA = s.n; });
+                    if (!capB) b.samples.forEach(function (s) { if (s.fps >= 55 && s.n > capB) capB = s.n; });
+                    html += '<p style="color:#7fd4ff;margin:8px 0 4px">⚖ [' + dev + '] 对比 (WebGPU / WebGL)</p>';
+                    html += '<table><tr><th>兔子</th><th>FPS</th><th>渲染ms</th><th>drawCall</th><th>稳</th></tr>' + rows + '</table>';
+                    html += '<p class="good">① 承载力(稳≥55fps): WebGPU ' + capA + ' 只 / WebGL ' + capB + ' 只'
+                        + (capB > 0 ? ' → <b>' + (capA / capB).toFixed(1) + '×</b>' : '') + '</p>';
+                    // 任一端撞到档位天花板，倍数就只是下限，必须标注，否则会把下限当成实测值传播
+                    if (a.capped || b.capped) {
+                        html += '<p style="color:#ffd479">⚠ '
+                            + (a.capped ? 'WebGPU' : 'WebGL')
+                            + ' 在最高档仍未掉帧，承载力被档位上限截断 → 上面的倍数是<b>下限</b>，真实差距更大</p>';
+                    }
+                    if (matched.length) {
+                        var cpuR = median(matched.map(function (m) { return m.cpuR; }));
+                        var dcM = matched.filter(function (m) { return m.dcR != null; });
+                        var dcR = dcM.length ? median(dcM.map(function (m) { return m.dcR; })) : null;
+                        html += '<p class="good">② drawCall 约为 1/' + (dcR != null ? dcR.toFixed(1) : '?')
+                            + '　③ 渲染主线程约为 1/' + cpuR.toFixed(1)
+                            + '（' + matched.length + ' 个共同稳档中位数；③≈1 表示主线程CPU两端接近——WebGPU 优势在消除 GPU/drawCall 瓶颈，不在省CPU）</p>';
+                    } else {
+                        html += '<p style="color:#8aa0bd">两后端没有共同稳帧档位，无法对比 drawCall/渲染主线程</p>';
+                    }
+                });
+                box.innerHTML = html;
+            }
+            renderCompare();
+        })();
+    </script>
+</body>
+
+</html>

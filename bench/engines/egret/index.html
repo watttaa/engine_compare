@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Egret(自研 5.4.1) Benchmark</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#222}
+  .egret-player{width:100%;height:100%}
+  #hud{position:fixed;top:8px;left:8px;z-index:9;color:#fff;font:12px/1.6 Consolas,monospace;
+       background:rgba(0,0,0,.55);padding:8px 10px;border-radius:4px}
+  #hud select,#hud input,#hud button{font:12px Consolas;margin-right:4px}
+</style>
+</head>
+<body>
+<!-- 引擎画布容器：runEgret 通过 .egret-player + data-entry-class 找入口类 -->
+<div class="egret-player"
+     data-entry-class="BenchMain"
+     data-orientation="auto"
+     data-scale-mode="fixedSize"
+     data-frame-rate="60"
+     data-content-width="1280"
+     data-content-height="720"
+     data-show-fps="false"
+     data-show-log="false"></div>
+
+<!-- 仿真核心（引擎无关） -->
+<script src="../../sim-core/stats.js"></script>
+<script src="../../sim-core/bunny-sim.js"></script>
+<script src="../../sim-core/boids-sim.js"></script>
+<script src="../../sim-core/bench-runner.js"></script>
+
+<!-- 自研 egret 引擎 5.4.1（WebGL） -->
+<script src="../../../egret-selfdev/5.4.1/build/egret/egret.js"></script>
+<script src="../../../egret-selfdev/5.4.1/build/egret/egret.web.js"></script>
+
+<!-- 适配器 -->
+<script src="main.js"></script>
+<script>
+  egret.runEgret({
+    renderMode: "webgl",
+    audioType: 0,
+    // 三引擎公平性：统一按 devicePixelRatio 采样（README 公平性清单第 3 条）
+    calculateCanvasScaleFactor: function () { return window.devicePixelRatio || 1; }
+  });
+</script>
+</body>
+</html>

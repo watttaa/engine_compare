@@ -1,0 +1,342 @@
+
+vx_role_hutouren.png
+size: 253,110
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+laohu_bai1
+  rotate: false
+  xy: 240, 38
+  size: 6, 6
+  orig: 6, 6
+  offset: 0, 0
+  index: -1
+laohu_bai10
+  rotate: false
+  xy: 243, 31
+  size: 4, 5
+  orig: 4, 5
+  offset: 0, 0
+  index: -1
+laohu_bai11
+  rotate: true
+  xy: 229, 7
+  size: 5, 6
+  orig: 5, 6
+  offset: 0, 0
+  index: -1
+laohu_bai2
+  rotate: false
+  xy: 243, 46
+  size: 8, 8
+  orig: 8, 8
+  offset: 0, 0
+  index: -1
+laohu_bai3
+  rotate: false
+  xy: 162, 2
+  size: 7, 7
+  orig: 7, 7
+  offset: 0, 0
+  index: -1
+laohu_bai4
+  rotate: false
+  xy: 222, 7
+  size: 5, 6
+  orig: 5, 6
+  offset: 0, 0
+  index: -1
+laohu_bai5
+  rotate: false
+  xy: 225, 49
+  size: 5, 8
+  orig: 5, 8
+  offset: 0, 0
+  index: -1
+laohu_bai6
+  rotate: false
+  xy: 231, 14
+  size: 5, 6
+  orig: 5, 6
+  offset: 0, 0
+  index: -1
+laohu_bai7
+  rotate: true
+  xy: 201, 13
+  size: 6, 9
+  orig: 6, 9
+  offset: 0, 0
+  index: -1
+laohu_bai8
+  rotate: true
+  xy: 159, 11
+  size: 20, 19
+  orig: 20, 19
+  offset: 0, 0
+  index: -1
+laohu_bai9
+  rotate: false
+  xy: 205, 65
+  size: 25, 22
+  orig: 25, 22
+  offset: 0, 0
+  index: -1
+laohu_er1
+  rotate: false
+  xy: 175, 62
+  size: 28, 25
+  orig: 28, 25
+  offset: 0, 0
+  index: -1
+laohu_er2
+  rotate: false
+  xy: 175, 35
+  size: 23, 25
+  orig: 23, 25
+  offset: 0, 0
+  index: -1
+laohu_fa1
+  rotate: false
+  xy: 218, 22
+  size: 15, 16
+  orig: 15, 16
+  offset: 0, 0
+  index: -1
+laohu_fa2
+  rotate: true
+  xy: 23, 2
+  size: 18, 16
+  orig: 18, 16
+  offset: 0, 0
+  index: -1
+laohu_fa3
+  rotate: false
+  xy: 201, 21
+  size: 15, 17
+  orig: 15, 17
+  offset: 0, 0
+  index: -1
+laohu_fa4
+  rotate: false
+  xy: 236, 84
+  size: 15, 24
+  orig: 15, 24
+  offset: 0, 0
+  index: -1
+laohu_fa5
+  rotate: false
+  xy: 180, 13
+  size: 19, 20
+  orig: 19, 20
+  offset: 0, 0
+  index: -1
+laohu_fa6
+  rotate: true
+  xy: 100, 11
+  size: 20, 32
+  orig: 20, 32
+  offset: 0, 0
+  index: -1
+laohu_hei1
+  rotate: false
+  xy: 235, 31
+  size: 6, 5
+  orig: 6, 5
+  offset: 0, 0
+  index: -1
+laohu_hei10
+  rotate: false
+  xy: 226, 40
+  size: 4, 7
+  orig: 4, 7
+  offset: 0, 0
+  index: -1
+laohu_hei11
+  rotate: true
+  xy: 232, 40
+  size: 4, 6
+  orig: 4, 6
+  offset: 0, 0
+  index: -1
+laohu_hei2
+  rotate: false
+  xy: 171, 2
+  size: 7, 7
+  orig: 7, 7
+  offset: 0, 0
+  index: -1
+laohu_hei3
+  rotate: true
+  xy: 212, 13
+  size: 6, 7
+  orig: 6, 7
+  offset: 0, 0
+  index: -1
+laohu_hei4
+  rotate: false
+  xy: 244, 17
+  size: 4, 5
+  orig: 4, 5
+  offset: 0, 0
+  index: -1
+laohu_hei5
+  rotate: false
+  xy: 235, 23
+  size: 4, 6
+  orig: 4, 6
+  offset: 0, 0
+  index: -1
+laohu_hei6
+  rotate: false
+  xy: 241, 24
+  size: 5, 5
+  orig: 5, 5
+  offset: 0, 0
+  index: -1
+laohu_hei7
+  rotate: true
+  xy: 221, 15
+  size: 5, 8
+  orig: 5, 8
+  offset: 0, 0
+  index: -1
+laohu_hei8
+  rotate: true
+  xy: 2, 2
+  size: 18, 19
+  orig: 18, 19
+  offset: 0, 0
+  index: -1
+laohu_hei9
+  rotate: false
+  xy: 134, 10
+  size: 23, 21
+  orig: 23, 21
+  offset: 0, 0
+  index: -1
+laohu_huzi1
+  rotate: false
+  xy: 205, 59
+  size: 25, 4
+  orig: 25, 4
+  offset: 0, 0
+  index: -1
+laohu_huzi2
+  rotate: false
+  xy: 200, 40
+  size: 24, 4
+  orig: 24, 4
+  offset: 0, 0
+  index: -1
+laohu_huzi3
+  rotate: false
+  xy: 145, 2
+  size: 15, 6
+  orig: 15, 6
+  offset: 0, 0
+  index: -1
+laohu_huzi4
+  rotate: false
+  xy: 68, 14
+  size: 29, 6
+  orig: 29, 6
+  offset: 0, 0
+  index: -1
+laohu_huzi5
+  rotate: false
+  xy: 122, 2
+  size: 21, 6
+  orig: 21, 6
+  offset: 0, 0
+  index: -1
+laohu_huzi6
+  rotate: false
+  xy: 68, 2
+  size: 24, 10
+  orig: 24, 10
+  offset: 0, 0
+  index: -1
+laohu_mei1
+  rotate: false
+  xy: 110, 2
+  size: 10, 7
+  orig: 10, 7
+  offset: 0, 0
+  index: -1
+laohu_mei2
+  rotate: false
+  xy: 232, 46
+  size: 9, 8
+  orig: 9, 8
+  offset: 0, 0
+  index: -1
+laohu_paidai1
+  rotate: false
+  xy: 232, 56
+  size: 19, 26
+  orig: 19, 26
+  offset: 0, 0
+  index: -1
+laohu_paidai2
+  rotate: true
+  xy: 238, 15
+  size: 6, 4
+  orig: 6, 4
+  offset: 0, 0
+  index: -1
+laohu_paidai3
+  rotate: true
+  xy: 41, 3
+  size: 17, 25
+  orig: 17, 25
+  offset: 0, 0
+  index: -1
+laohu_shenti
+  rotate: false
+  xy: 100, 33
+  size: 73, 75
+  orig: 73, 75
+  offset: 0, 0
+  index: -1
+laohu_tou
+  rotate: false
+  xy: 2, 22
+  size: 96, 86
+  orig: 96, 86
+  offset: 0, 0
+  index: -1
+laohu_yan1
+  rotate: false
+  xy: 180, 2
+  size: 23, 9
+  orig: 23, 9
+  offset: 0, 0
+  index: -1
+laohu_yan1_1
+  rotate: false
+  xy: 200, 46
+  size: 23, 11
+  orig: 23, 11
+  offset: 0, 0
+  index: -1
+laohu_yan2
+  rotate: false
+  xy: 94, 2
+  size: 14, 7
+  orig: 14, 7
+  offset: 0, 0
+  index: -1
+laohu_yan2_2
+  rotate: false
+  xy: 205, 2
+  size: 15, 9
+  orig: 15, 9
+  offset: 0, 0
+  index: -1
+laohu_zui
+  rotate: false
+  xy: 175, 89
+  size: 59, 19
+  orig: 59, 19
+  offset: 0, 0
+  index: -1

@@ -1,0 +1,29 @@
+# 构建产物：本地生成的静态站点，提交到 CI 重新构建
+bench/web/dist/
+
+# IDE 缓存与库
+proj-laya/bin/
+proj-laya/library/
+proj-laya/local/
+proj-cocos/build/
+proj-cocos/temp/
+proj-cocos/library/
+
+# 大型参考源码（本地保留，不进仓库；CI 只需 5.4.1/build/egret/）
+cocos-engine/
+layaair/
+aquarium/
+bunny-mark/
+openspec/
+
+# egret-selfdev：仅保留 5.4.1/build/egret/ 引擎库，其余为参考源码
+egret-selfdev/*
+!egret-selfdev/5.4.1/
+egret-selfdev/5.4.1/*
+!egret-selfdev/5.4.1/build/
+egret-selfdev/5.4.1/build/*
+!egret-selfdev/5.4.1/build/egret/
+
+# 系统
+.DS_Store
+Thumbs.db

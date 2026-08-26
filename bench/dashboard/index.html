@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>三引擎基准对比 Dashboard</title>
+<style>
+  body{font:14px/1.6 "Microsoft YaHei",sans-serif;background:#1e1e1e;color:#ddd;margin:24px}
+  h1{font-size:20px} h2{font-size:15px;margin-top:24px;color:#8ecdf7}
+  #drop{border:2px dashed #666;border-radius:8px;padding:28px;text-align:center;color:#999;margin:16px 0}
+  #drop.over{border-color:#8ecdf7;color:#8ecdf7}
+  table{border-collapse:collapse;width:100%;margin-top:8px;font-size:13px}
+  th,td{border:1px solid #444;padding:5px 9px;text-align:right;white-space:nowrap}
+  th{background:#2d2d2d;text-align:center}
+  td.l{text-align:left}
+  tr.best td{background:#1d3a2a}
+  .note{color:#888;font-size:12px}
+</style>
+</head>
+<body>
+<h1>三引擎基准对比（BunnyMark / 水族馆 2D）</h1>
+<div id="drop">把各引擎导出的 bench_*.json 拖进来（可多选）</div>
+<div id="view"></div>
+<p class="note">对比规则：同一 variant 下，p50 最小（帧时间最短）的行标绿。ramp 模式看 maxStableCount。</p>
+<input type="file" id="file" multiple style="display:none">
+
+<script>
+var results = [];
+var drop = document.getElementById('drop');
+var view = document.getElementById('view');
+
+drop.onclick = function () { document.getElementById('file').click(); };
+document.getElementById('file').onchange = function (e) { addFiles(e.target.files); };
+['dragover', 'dragenter'].forEach(function (ev) {
+  drop.addEventListener(ev, function (e) { e.preventDefault(); drop.className = 'over'; });
+});
+['dragleave', 'drop'].forEach(function (ev) {
+  drop.addEventListener(ev, function (e) { e.preventDefault(); drop.className = ''; });
+});
+drop.addEventListener('drop', function (e) { addFiles(e.dataTransfer.files); });
+
+function addFiles(files) {
+  Array.prototype.forEach.call(files, function (f) {
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var j = JSON.parse(r.result);
+        results.push(j);
+        render();
+      } catch (err) { alert(f.name + ' 不是合法 JSON'); }
+    };
+    r.readAsText(f);
+  });
+}
+
+function render() {
+  var html = '<h2>全部结果</h2><table><tr>' +
+    '<th>引擎</th><th>变体</th><th>模式</th><th>数量</th><th>FPS</th>' +
+    '<th>p50</th><th>p95</th><th>p99</th><th>超16.7ms%</th>' +
+    '<th>DrawCall</th><th>堆内存MB</th><th>maxStable</th></tr>';
+
+  // 按 variant 分组找最优 p50
+  var best = {};
+  results.forEach(function (j) {
+    var key = j.meta.variant + '|' + j.meta.mode;
+    if (j.meta.mode === 'fixed' && (!best[key] || j.p50 < best[key])) best[key] = j.p50;
+  });
+
+  results.forEach(function (j) {
+    var m = j.meta || {};
+    var isBest = m.mode === 'fixed' && best[m.variant + '|' + m.mode] === j.p50;
+    html += '<tr' + (isBest ? ' class="best"' : '') + '>' +
+      '<td class="l">' + m.engine + '</td>' +
+      '<td class="l">' + m.variant + '</td>' +
+      '<td>' + m.mode + '</td>' +
+      '<td>' + (j.nodeCount != null ? j.nodeCount : '-') + '</td>' +
+      '<td>' + j.fps + '</td>' +
+      '<td>' + j.p50 + '</td><td>' + j.p95 + '</td><td>' + j.p99 + '</td>' +
+      '<td>' + j.overBudgetPct + '</td>' +
+      '<td>' + (j.drawCalls != null ? j.drawCalls : '-') + '</td>' +
+      '<td>' + (j.jsHeapMB != null ? j.jsHeapMB : '-') + '</td>' +
+      '<td>' + (j.maxStableCount != null ? j.maxStableCount : '-') + '</td></tr>';
+  });
+  html += '</table>';
+
+  // 透视表：variant × engine 的 p50
+  var engines = {}, variants = {};
+  results.forEach(function (j) {
+    if (j.meta.mode !== 'fixed') return;
+    engines[j.meta.engine] = 1;
+    variants[j.meta.variant] = 1;
+  });
+  var eList = Object.keys(engines), vList = Object.keys(variants).sort();
+  if (eList.length && vList.length) {
+    html += '<h2>透视：p50 帧时间(ms)（越小越好）</h2><table><tr><th>变体</th>';
+    eList.forEach(function (e) { html += '<th>' + e + '</th>'; });
+    html += '</tr>';
+    vList.forEach(function (v) {
+      html += '<tr><td class="l">' + v + '</td>';
+      var cells = eList.map(function (e) {
+        var r = results.find(function (j) {
+          return j.meta.mode === 'fixed' && j.meta.variant === v && j.meta.engine === e;
+        });
+        return r ? r.p50 : '-';
+      });
+      var nums = cells.filter(function (c) { return typeof c === 'number'; });
+      var min = nums.length ? Math.min.apply(null, nums) : null;
+      cells.forEach(function (c) {
+        html += '<td' + (c === min ? ' style="background:#1d3a2a"' : '') + '>' + c + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</table>';
+  }
+  view.innerHTML = html;
+}
+</script>
+</body>
+</html>

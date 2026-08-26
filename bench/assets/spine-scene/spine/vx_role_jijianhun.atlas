@@ -1,0 +1,230 @@
+
+vx_role_jijianhun.png
+size: 740,204
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+shenti_01
+  rotate: true
+  xy: 536, 20
+  size: 69, 40
+  orig: 69, 40
+  offset: 0, 0
+  index: -1
+shenti_02
+  rotate: false
+  xy: 717, 43
+  size: 21, 24
+  orig: 21, 24
+  offset: 0, 0
+  index: -1
+shenti_03
+  rotate: false
+  xy: 158, 24
+  size: 28, 19
+  orig: 28, 19
+  offset: 0, 0
+  index: -1
+shenti_04
+  rotate: true
+  xy: 355, 2
+  size: 89, 93
+  orig: 89, 93
+  offset: 0, 0
+  index: -1
+shenti_05
+  rotate: true
+  xy: 2, 2
+  size: 41, 43
+  orig: 41, 43
+  offset: 0, 0
+  index: -1
+tou_01
+  rotate: false
+  xy: 476, 91
+  size: 116, 111
+  orig: 116, 111
+  offset: 0, 0
+  index: -1
+tou_02
+  rotate: false
+  xy: 84, 9
+  size: 31, 34
+  orig: 31, 34
+  offset: 0, 0
+  index: -1
+tou_03
+  rotate: true
+  xy: 536, 2
+  size: 16, 58
+  orig: 16, 58
+  offset: 0, 0
+  index: -1
+tou_04
+  rotate: true
+  xy: 117, 25
+  size: 18, 39
+  orig: 18, 39
+  offset: 0, 0
+  index: -1
+tou_05
+  rotate: false
+  xy: 169, 3
+  size: 19, 19
+  orig: 19, 19
+  offset: 0, 0
+  index: -1
+tou_06
+  rotate: true
+  xy: 578, 59
+  size: 30, 8
+  orig: 30, 8
+  offset: 0, 0
+  index: -1
+tou_07
+  rotate: true
+  xy: 726, 20
+  size: 21, 12
+  orig: 21, 12
+  offset: 0, 0
+  index: -1
+tou_08
+  rotate: false
+  xy: 188, 34
+  size: 36, 9
+  orig: 36, 9
+  offset: 0, 0
+  index: -1
+tou_09
+  rotate: false
+  xy: 450, 10
+  size: 84, 79
+  orig: 84, 79
+  offset: 0, 0
+  index: -1
+tou_10
+  rotate: true
+  xy: 696, 30
+  size: 37, 19
+  orig: 37, 19
+  offset: 0, 0
+  index: -1
+tou_11
+  rotate: true
+  xy: 149, 2
+  size: 20, 18
+  orig: 20, 18
+  offset: 0, 0
+  index: -1
+tou_12
+  rotate: false
+  xy: 47, 6
+  size: 35, 37
+  orig: 35, 37
+  offset: 0, 0
+  index: -1
+tou_13
+  rotate: true
+  xy: 695, 98
+  size: 27, 39
+  orig: 27, 39
+  offset: 0, 0
+  index: -1
+tou_14
+  rotate: false
+  xy: 320, 26
+  size: 24, 22
+  orig: 24, 22
+  offset: 0, 0
+  index: -1
+touying
+  rotate: true
+  xy: 2, 45
+  size: 157, 222
+  orig: 157, 222
+  offset: 0, 0
+  index: -1
+touying_bai_01
+  rotate: false
+  xy: 696, 69
+  size: 36, 27
+  orig: 36, 27
+  offset: 0, 0
+  index: -1
+touying_bai_02
+  rotate: false
+  xy: 226, 34
+  size: 53, 50
+  orig: 53, 50
+  offset: 0, 0
+  index: -1
+touying_bai_03
+  rotate: false
+  xy: 281, 34
+  size: 37, 50
+  orig: 37, 50
+  offset: 0, 0
+  index: -1
+touying_bai_04
+  rotate: true
+  xy: 320, 50
+  size: 34, 32
+  orig: 34, 32
+  offset: 0, 0
+  index: -1
+touying_bai_05
+  rotate: false
+  xy: 226, 86
+  size: 127, 116
+  orig: 127, 116
+  offset: 0, 0
+  index: -1
+touying_bai_06
+  rotate: false
+  xy: 594, 98
+  size: 99, 104
+  orig: 99, 104
+  offset: 0, 0
+  index: -1
+touying_hei_01
+  rotate: false
+  xy: 117, 2
+  size: 30, 21
+  orig: 30, 21
+  offset: 0, 0
+  index: -1
+touying_hei_02
+  rotate: false
+  xy: 695, 159
+  size: 43, 43
+  orig: 43, 43
+  offset: 0, 0
+  index: -1
+touying_hei_03
+  rotate: true
+  xy: 695, 127
+  size: 30, 43
+  orig: 30, 43
+  offset: 0, 0
+  index: -1
+touying_hei_04
+  rotate: false
+  xy: 696, 2
+  size: 28, 26
+  orig: 28, 26
+  offset: 0, 0
+  index: -1
+touying_hei_05
+  rotate: false
+  xy: 355, 93
+  size: 119, 109
+  orig: 119, 109
+  offset: 0, 0
+  index: -1
+touying_hei_06
+  rotate: true
+  xy: 596, 4
+  size: 92, 98
+  orig: 92, 98
+  offset: 0, 0
+  index: -1

@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "engine": "layaair-3.4.0",
+    "variant": "V1",
+    "backend": "webgpu",
+    "mode": "fixed",
+    "count": 10000
+  },
+  "nodeCount": 10000,
+  "drawCallAvg": 0,
+  "drawCallMax": 0,
+  "drawCallSamples": 0,
+  "frames": 262,
+  "fps": 26.1,
+  "p50": 36.8,
+  "p95": 49,
+  "p99": 58.6,
+  "overBudgetPct": 100,
+  "jsHeapMB": 307,
+  "gpuVendor": "Google Inc. (NVIDIA)",
+  "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 SUPER (0x00002187) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) LayaAirIDE/3.4.0 Chrome/142.0.7444.265 Electron/39.8.10 Safari/537.36",
+  "timestamp": 1787738612194
+}

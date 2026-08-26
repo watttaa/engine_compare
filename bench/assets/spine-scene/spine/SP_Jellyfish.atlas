@@ -1,0 +1,48 @@
+
+SP_Jellyfish.png
+size: 138,371
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+SP_jellyfish_antenna_left_01
+  rotate: true
+  xy: 2, 215
+  size: 56, 133
+  orig: 56, 133
+  offset: 0, 0
+  index: -1
+SP_jellyfish_antenna_left_02
+  rotate: true
+  xy: 2, 148
+  size: 65, 124
+  orig: 65, 124
+  offset: 0, 0
+  index: -1
+SP_jellyfish_antenna_right_01
+  rotate: true
+  xy: 2, 273
+  size: 48, 124
+  orig: 48, 124
+  offset: 0, 0
+  index: -1
+SP_jellyfish_antenna_right_02
+  rotate: true
+  xy: 2, 323
+  size: 46, 134
+  orig: 46, 134
+  offset: 0, 0
+  index: -1
+SP_jellyfish_head
+  rotate: true
+  xy: 2, 2
+  size: 144, 92
+  orig: 144, 92
+  offset: 0, 0
+  index: -1
+SP_jellyfish_head_bg
+  rotate: true
+  xy: 96, 2
+  size: 144, 37
+  orig: 144, 37
+  offset: 0, 0
+  index: -1

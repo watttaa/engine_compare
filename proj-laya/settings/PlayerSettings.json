@@ -1,0 +1,13 @@
+{
+  "modules": {
+    "laya.ui": true,
+    "laya.d3": true
+  },
+  "addons": {
+    "laya.ui": "ui2"
+  },
+  "webgpu": true,
+  "splash": {
+    "fit": "center"
+  }
+}
