@@ -1,0 +1,26 @@
+/* 总控面板 —— 四场景测试子界面共用样式 */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#14161a;
+  color:#e6e8ec;font:14px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+#stage{position:absolute;left:0;top:0;right:0;bottom:0}
+
+/* 总控面板 */
+#ctrl{position:fixed;left:8px;top:8px;z-index:99999;background:rgba(16,22,30,.88);
+  backdrop-filter:blur(6px);border:1px solid #2b3947;border-radius:10px;padding:10px 12px;
+  color:#e6edf3;width:380px;max-width:92vw;max-height:96vh;overflow:auto}
+#ctrl .title{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+#ctrl .title h2{margin:0;font-size:15px;color:#7fd4ff;font-weight:600}
+#ctrl .back{color:#8aa0b4;text-decoration:none;font-size:12px}
+#ctrl .back:hover{color:#cdd9e5}
+#ctrl .row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}
+#ctrl .lbl{width:46px;color:#8aa0b4;flex:none;font-size:12px}
+#ctrl select{background:#0d1218;color:#e6edf3;border:1px solid #33475a;border-radius:7px;
+  padding:4px 8px;font-size:12px;flex:1;min-width:120px}
+#ctrl button{background:#1d2833;color:#cdd9e5;border:1px solid #33475a;border-radius:7px;
+  padding:5px 12px;cursor:pointer;font-size:12px}
+#ctrl button:hover:not(:disabled){background:#27405f}
+#ctrl button:disabled{opacity:.45;cursor:default}
+#ctrl button.primary{background:#2f6feb;border-color:#2f6feb;color:#fff;font-weight:600}
+#ctrl .live{background:#0d1218;border:1px solid #2b3947;border-radius:8px;padding:7px 9px;
+  white-space:pre-wrap;font:11px/1.6 ui-monospace,Consolas,monospace;color:#9fe8a8;max-height:200px;overflow:auto}
+#ctrl .tip{margin-top:6px;font-size:11.5px;color:#7d93a8;line-height:1.5}

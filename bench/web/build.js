@@ -95,25 +95,37 @@ function main() {
     }
   }
 
-  // 6. 导航页（引擎分组 × 后端卡片）
-  const group = (title, items) => {
-    const cards = items.map(it => {
-      const ready = it.ready;
-      return `<a class="card ${ready ? '' : 'pending'}" href="${it.href}" ${ready ? '' : 'onclick="return false" style="opacity:.45;cursor:not-allowed"'}>
-        <h2>${it.title}</h2>
-        <p>${it.sub}</p>
-        <span class="tag">${ready ? '可测' : '待发布'}</span>
-      </a>`;
-    }).join('');
-    return `<section class="grp"><h3>${title}</h3><div class="cards">${cards}</div></section>`;
+  // 6. 导航页（四场景入口）+ 四个测试子界面（总控面板）
+  const SCENES = [
+    { key: 'bunny', title: 'BunnyMark', icon: '🐰', sub: '2D 精灵压力 · V1-V4 合批/破批/变换' },
+    { key: 'boids', title: '水族馆', icon: '🐟', sub: '大量 2D 单位综合运动（旋转+多纹理）' },
+    { key: 'dhxy', title: '大话西游', icon: '⚔️', sub: '骨骼动画 · 8 角色真实资源（MMO 核心）' },
+    { key: 'cloth', title: '布料', icon: '🧵', sub: '布料/物理模拟（规划中）' }
+  ];
+
+  // 引擎×后端 → 产物入口（相对 dist 根）
+  const BACKENDS = {
+    'egret':  { name: 'Egret 自研 5.4.1', webgl: 'egret/index.html', webgpu: 'egret-webgpu/bunnymark.html' },
+    'laya':   { name: 'LayaAir 3.4',      webgl: 'laya-webgl/index.html', webgpu: 'laya/index.html' },
+    'cocos':  { name: 'Cocos Creator 3.8.8', webgl: 'cocos-webgl/index.html', webgpu: 'cocos/index.html' }
   };
+
+  // 导航页
+  const sceneCards = SCENES.map(s => {
+    // 该场景是否已有任一引擎可进（当前骨架阶段：全部显示，进子页后按产物可用性判定）
+    return `<a class="scene" href="scene-${s.key}.html">
+      <div class="ic">${s.icon}</div>
+      <div class="tx"><h2>${s.title}</h2><p>${s.sub}</p></div>
+      <span class="arrow">→</span>
+    </a>`;
+  }).join('');
 
   const nav = `<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>引擎性能对比 · 基准测试</title>
+<title>引擎性能对比 · 四场景基准</title>
 <style>
   *{box-sizing:border-box}
   body{margin:0;background:#14161a;color:#e6e8ec;font:14px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
@@ -121,42 +133,63 @@ function main() {
   h1{font-size:20px;margin:0 0 4px}
   .sub{color:#8a90a0;margin:0 0 28px;font-size:13px;text-align:center}
   .wrap{width:100%;max-width:640px}
-  .grp{margin-bottom:22px}
-  .grp h3{font-size:15px;color:#7fd4ff;margin:0 0 10px;font-weight:600}
-  .cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  @media(max-width:480px){.cards{grid-template-columns:1fr}}
-  .card{display:block;text-decoration:none;color:inherit;background:#1d2027;border:1px solid #2b2f38;
-        border-radius:10px;padding:14px 16px;transition:border-color .15s}
-  .card:hover{border-color:#4a5568}
-  .card h2{margin:0 0 4px;font-size:15px}
-  .card p{margin:0 0 10px;color:#9aa0ad;font-size:12.5px}
-  .tag{font-size:11.5px;padding:2px 8px;border-radius:999px;background:#2b6e3f;color:#7fdc9a}
-  .card.pending .tag{background:#5a5240;color:#e0c97f}
-  .note{margin-top:26px;font-size:12px;color:#6b7280}
+  .scene{display:flex;align-items:center;gap:14px;text-decoration:none;color:inherit;
+       background:#1d2027;border:1px solid #2b2f38;border-radius:12px;padding:18px 20px;
+       margin-bottom:12px;transition:border-color .15s}
+  .scene:hover{border-color:#4a5568}
+  .scene .ic{font-size:32px;line-height:1}
+  .scene .tx{flex:1}
+  .scene h2{margin:0 0 2px;font-size:16px}
+  .scene p{margin:0;color:#9aa0ad;font-size:12.5px}
+  .scene .arrow{color:#5a6470;font-size:18px}
+  .note{margin-top:26px;font-size:12px;color:#6b7280;text-align:center;max-width:640px}
 </style>
 </head>
 <body>
-  <h1>引擎性能对比 · 基准测试</h1>
-  <p class="sub">同机、同分辨率、同资源，三引擎 × WebGL/WebGPU 横向对比</p>
-  <div class="wrap">
-    ${group('🐰 Egret 自研 5.4.1', [
-      { title: 'WebGL · 统一基准', sub: 'BunnyMark V1-V4 + 水族馆（三引擎同口径）', href: 'egret/', ready: true },
-      { title: 'WebGPU vs WebGL 自比', sub: '同机同场景只切后端，直接看加速比', href: 'egret-webgpu/bunnymark.html', ready: true }
-    ])}
-    ${group('🔵 LayaAir 3.4', [
-      { title: 'WebGPU · 统一基准', sub: 'BunnyMark V1-V4 + 水族馆', href: 'laya/', ready: hasVendor('laya') },
-      { title: 'WebGL · 统一基准', sub: 'BunnyMark V1-V4 + 水族馆', href: 'laya-webgl/', ready: hasVendor('laya-webgl') }
-    ])}
-    ${group('🟢 Cocos Creator 3.8.8', [
-      { title: 'WebGPU · 统一基准', sub: 'BunnyMark V1-V4 + 水族馆', href: 'cocos/', ready: hasVendor('cocos') },
-      { title: 'WebGL · 统一基准', sub: 'BunnyMark V1-V4 + 水族馆', href: 'cocos-webgl/', ready: hasVendor('cocos-webgl') }
-    ])}
-  </div>
-  <p class="note">说明：手机浏览器可测 WebGL（全引擎）；WebGPU 主要在 PC Chrome/Edge 测。
-  每轮先预热 3 秒再采样 10 秒；结果 JSON 自动复制到剪贴板，粘贴发回分析。</p>
+  <h1>引擎性能对比</h1>
+  <p class="sub">三引擎（Egret / Laya / Cocos）× 两后端（WebGL / WebGPU）· 四场景横向基准</p>
+  <div class="wrap">${sceneCards}</div>
+  <p class="note">每个测试子界面内切换引擎与后端；结果 JSON 自动复制。WebGPU 需 PC 端 Chrome/Edge。</p>
 </body>
 </html>`;
   fs.writeFileSync(path.join(DIST, 'index.html'), nav, 'utf8');
+
+  // 测试子界面（总控面板：切引擎/后端）
+  for (const s of SCENES) {
+    const engines = [];
+    for (const [key, info] of Object.entries(BACKENDS)) {
+      const webglOk = key === 'egret' || hasVendor(key === 'laya' ? 'laya-webgl' : 'cocos-webgl');
+      const webgpuOk = key === 'egret' || hasVendor(key);
+      const bs = {};
+      if (webgpuOk) bs.webgpu = info.webgpu;
+      if (webglOk) bs.webgl = info.webgl;
+      engines.push({ key, name: info.name, backends: bs });
+    }
+    const appConfig = { scene: s.key, sceneTitle: s.icon + ' ' + s.title, engines };
+    const sceneHtml = `<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>${s.title} · 引擎基准</title>
+<link rel="stylesheet" href="tpl/ctrl.css">
+</head>
+<body>
+<div id="stage"></div>
+<div id="ctrl"></div>
+<script>
+  window.APP = ${JSON.stringify(appConfig)};
+</script>
+<script src="tpl/ctrl.js"></script>
+</body>
+</html>`;
+    fs.writeFileSync(path.join(DIST, 'scene-' + s.key + '.html'), sceneHtml, 'utf8');
+    console.log('  生成 scene-' + s.key + '.html（' + engines.filter(e => Object.keys(e.backends).length).length + ' 引擎可用）');
+  }
+
+  // 拷贝共用样样式 + 总控脚本
+  cp(path.join(WEB, 'tpl', 'ctrl.css'), path.join(DIST, 'tpl', 'ctrl.css'));
+  cp(path.join(WEB, 'tpl', 'ctrl.js'), path.join(DIST, 'tpl', 'ctrl.js'));
 
   console.log('== 完成：' + path.relative(ROOT, DIST) + ' ==');
   console.log('    laya=' + hasVendor('laya') + ' laya-webgl=' + hasVendor('laya-webgl') +
