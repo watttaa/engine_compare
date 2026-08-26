@@ -72,6 +72,18 @@ function main() {
   egMain = egMain.replace(/\.\.\/\.\.\/assets\//g, '../assets/');
   fs.writeFileSync(path.join(DIST, 'egret', 'main.js'), egMain, 'utf8');
 
+  // 3.5. Laya / Cocos：本地 IDE 发布产物，提交在 vendor/，CI 整目录拷贝
+  const VENDOR = path.join(WEB, 'vendor');
+  for (const name of ['laya', 'cocos']) {
+    const src = path.join(VENDOR, name);
+    if (fs.existsSync(src) && fs.readdirSync(src).length > 0) {
+      console.log('[' + name + '] 从 vendor 拷贝发布产物');
+      fs.cpSync(src, path.join(DIST, name), { recursive: true });
+    } else {
+      console.log('[' + name + '] vendor 缺失，跳过');
+    }
+  }
+
   // 4. 导航页（标注 laya/cocos 是否已就位）
   const layaReady = fs.existsSync(path.join(DIST, 'laya', 'index.html'));
   const cocosReady = fs.existsSync(path.join(DIST, 'cocos', 'index.html'));
