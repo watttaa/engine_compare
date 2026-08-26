@@ -157,6 +157,8 @@
     var name = 'bench_' + (json.meta.engine || 'x') + '_' +
       (json.meta.variant || 'x') + '_' + Date.now() + '.json';
     var text = JSON.stringify(json, null, 2);
+    // 供编排页（自动测试）通过 iframe 读取：window.__benchLastResult
+    try { global.__benchLastResult = json; } catch (e) { /* 忽略 */ }
     function download() {
       var blob = new Blob([text], { type: 'application/json' });
       var a = document.createElement('a');

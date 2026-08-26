@@ -28,15 +28,19 @@
       '<option value="webgpu">WebGPU</option>' +
       '<option value="webgl">WebGL</option>' +
       '</select></div>' +
+      '<div class="row"><span class="lbl">数量</span>' +
+      '<input id="cntSel" type="number" value="10000" step="1000" style="background:#0d1218;color:#e6edf3;border:1px solid #33475a;border-radius:7px;padding:4px 8px;font-size:12px;width:90px"></div>' +
       '<div class="row">' +
-      '<button id="goBtn" class="primary">▶ 开始测试</button>' +
+      '<button id="goBtn" class="primary">▶ 单轮测试</button>' +
+      '<button id="autoBtn">⚡ 自动对比两后端</button>' +
       '</div>' +
-      '<div class="live" id="status">选择引擎和后端，点击开始测试。</div>' +
+      '<div class="live" id="status">选择引擎和后端，点击测试。自动对比：同引擎 WebGPU→WebGL 各跑一轮，出加速比。</div>' +
       '<div class="tip">切片规则：同一引擎、同一后端跑一轮（预热 3s + 采样 10s），结果 JSON 自动复制。' +
-      'WebGPU 需 PC 端 Chrome/Edge；手机可测 WebGL。</div>';
+      'WebGPU 需 PC 端 Chrome/Edge；手机可测 WebGL。数量对应场景：Bunny 10000 / 水族馆 1000。</div>';
 
     $('#engineSel').onchange = function () { updateBackendOptions(); };
     $('#goBtn').onclick = function () { go(); };
+    $('#autoBtn').onclick = function () { autoCompare(); };
     updateBackendOptions();
   }
 
@@ -64,6 +68,98 @@
     }
     var sep = url.indexOf('?') >= 0 ? '&' : '?';
     location.href = url + sep + 'scene=' + APP.scene;
+  }
+
+  // 自动对比：iframe 里跑同一引擎的两后端，轮流收集结果，出加速比
+  var RESULTS = {};       // backend -> json
+  var autoState = { running: false, queue: [], timer: null };
+
+  function autoCompare() {
+    if (autoState.running) { $('#status').textContent = '自动对比进行中，请稍候…'; return; }
+    var e = $('#engineSel').value;
+    var eng = APP.engines.find(function (x) { return x.key === e; });
+    var count = parseInt($('#cntSel').value, 10) || 10000;
+
+    // 只跑已发布的后端
+    var order = [];
+    if (eng.backends.webgpu) order.push('webgpu');
+    if (eng.backends.webgl) order.push('webgl');
+    if (order.length < 2) {
+      $('#status').textContent = eng.name + ' 只有 ' + order.length + ' 个后端产物，无法自动对比。先单轮测试。';
+      return;
+    }
+
+    RESULTS = {};
+    autoState.running = true;
+    autoState.queue = order.slice();
+    $('#autoBtn').disabled = true;
+    $('#goBtn').disabled = true;
+    runNext(eng, count);
+  }
+
+  function runNext(eng, count) {
+    var backend = autoState.queue.shift();
+    if (!backend) { finishCompare(eng); return; }
+    $('#status').textContent = '【自动对比】' + eng.name + ' · ' +
+      (backend === 'webgpu' ? 'WebGPU' : 'WebGL') + ' 运行中（预热3s+采样10s，约15s）…';
+
+    var url = eng.backends[backend];
+    // Laya 支持 ?auto=1&variant&count；其他产物返回 scene 参数即可（Egret 自比面板走自己的逻辑）
+    var params = 'auto=1&backend=' + backend;
+    if (url.indexOf('laya') >= 0) {
+      params += '&variant=' + (APP.scene === 'boids' ? 'boids' : 'V1') + '&count=' + count;
+    }
+    var sep = url.indexOf('?') >= 0 ? '&' : '?';
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;border:0';
+    iframe.src = url + sep + params;
+    document.body.appendChild(iframe);
+
+    // 轮询 iframe 里的 __benchLastResult（Laya 自动跑完会写）
+    var deadline = Date.now() + 40000;
+    var watch = setInterval(function () {
+      if (Date.now() > deadline) {
+        clearInterval(watch);
+        iframe.remove();
+        RESULTS[backend] = { error: '超时（40s）', meta: { variant: 'V1' } };
+        runNext(eng, count);
+        return;
+      }
+      var res = null;
+      try { res = iframe.contentWindow.__benchLastResult; } catch (err) { /* 跨域/未加载完 */ }
+      if (res) {
+        clearInterval(watch);
+        RESULTS[backend] = res;
+        iframe.remove();
+        runNext(eng, count);
+      }
+    }, 500);
+  }
+
+  function finishCompare(eng) {
+    autoState.running = false;
+    $('#autoBtn').disabled = false;
+    $('#goBtn').disabled = false;
+
+    var wg = RESULTS.webgpu, gl = RESULTS.webgl;
+    var hasErr = !wg || !gl || wg.error || gl.error;
+    if (hasErr) {
+      $('#status').textContent = '对比完成（有缺失）:\n' + JSON.stringify(RESULTS, null, 2).slice(0, 800);
+      return;
+    }
+    var wgP95 = wg.p95, glP95 = gl.p95;
+    var speedup = glP95 && wgP95 ? (glP95 / wgP95).toFixed(2) : '?';
+    var txt =
+      '=== ' + eng.name + ' 两后端对比（p95 帧时，越小越好）===\n' +
+      'WebGL :  p50=' + gl.p50 + 'ms  p95=' + glP95 + 'ms  p99=' + gl.p99 + 'ms  dc=' + gl.drawCallAvg + '\n' +
+      'WebGPU:  p50=' + wg.p50 + 'ms  p95=' + wgP95 + 'ms  p99=' + wg.p99 + 'ms  dc=' + wg.drawCallAvg + '\n' +
+      '加速比: WebGPU 是 WebGL 的 ' + speedup + ' 倍（按 p95）\n' +
+      'nodes=' + wg.nodeCount + ' fps=' + wg.fps + ' / ' + gl.fps;
+    $('#status').textContent = txt;
+    // 附加完整 JSON 供复制
+    RESULTS.__summary = txt;
+    window.__benchAutoResult = RESULTS;
+    try { navigator.clipboard.writeText(JSON.stringify(RESULTS, null, 2)); } catch (e) { /* 忽略 */ }
   }
 
   build();

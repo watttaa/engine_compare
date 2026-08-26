@@ -49,6 +49,38 @@ export class LayaBench {
             runner.tick(ts);
             adapter.step(ts);
         });
+
+        // 自动测试：?auto=1&variant=V1&count=10000（编排页用，进入即跑固定采样）
+        const q = new URLSearchParams(location.search);
+        if (q.get('auto') === '1') {
+            const variant = q.get('variant') || 'V1';
+            const count = parseInt(q.get('count') || '10000', 10) || 10000;
+            const $v = document.querySelector('#lv') as HTMLSelectElement;
+            const $c = document.querySelector('#cnt') as HTMLInputElement;
+            if ($v) { $v.value = variant; }
+            if ($c) { $c.value = String(count); }
+            LayaBench.loadAndRun(Laya, runner, adapter, backend, $v, $c);
+        }
+    }
+
+    /** 载入贴图并跑固定采样（HUD 按钮与自动测试共用） */
+    private static loadAndRun(Laya: any, runner: any, adapter: any, backend: string,
+        $v: HTMLSelectElement, $c: HTMLInputElement): void {
+        const $out = document.querySelector('#out') as HTMLElement;
+        const variant = $v ? $v.value : 'V1';
+        const count = $c ? parseInt($c.value, 10) || 10000 : 10000;
+        const names = variant === 'boids' ? FISH_IMGS
+            : variant === 'V1' ? BUNNY_IMGS.slice(0, 1)
+                : variant === 'V2' ? BUNNY_IMGS.slice(0, 8)
+                    : BUNNY_IMGS;
+        const urls = names.map((n: string) => RES_PREFIX + n);
+        Laya.loader.load(urls, Laya.Handler.create(null, () => {
+            adapter.textures = urls.map((u: string) => Laya.loader.getRes(u));
+            runner.fixedRun({
+                engine: 'layaair-3.4.0', variant, backend, count
+            });
+            if ($out) $out.textContent = '运行中…';
+        }));
     }
 
     private static buildHud(Laya: any, runner: any, adapter: any, backend: string): void {
@@ -108,13 +140,7 @@ export class LayaBench {
             $out.textContent += ' | 已复制 JSON';
         };
         hud.querySelector('#fixed')!.addEventListener('click', () => {
-            loadAssets($v.value, () => {
-                runner.fixedRun({
-                    engine: 'layaair-3.4.0', variant: $v.value, backend,
-                    count: parseInt($c.value, 10) || 10000
-                });
-                $out.textContent = '运行中…';
-            });
+            LayaBench.loadAndRun(Laya, runner, adapter, backend, $v, $c);
         });
         hud.querySelector('#ramp')!.addEventListener('click', () => {
             loadAssets($v.value, () => {
@@ -235,10 +261,10 @@ class LayaAdapter {
         const g: any = globalThis as any;
         const statEl = g.StatElement || (g.Laya && g.Laya.StatElement);
         if (g.LayaGL && g.LayaGL.statAgent && statEl) {
-            // 2D 场景只记 CT_2DDrawCall（CT_DrawCall 仅 3D 路径），两者相加兼容混合场景
-            const dc2d = g.LayaGL.statAgent.getElementData(statEl.CT_2DDrawCall);
-            const dcAll = g.LayaGL.statAgent.getElementData(statEl.CT_DrawCall);
-            return dc2d + dcAll;
+            // 2D 场景只记 CT_2DDrawCall（合批提交数）。
+            // 注意：CT_DrawCall 在 2D 的 geometry 路径也会累加（源码 laya.webgl_2D.js L5187），
+            // 两者相加会重复计数，故 2D 只取 CT_2DDrawCall。3D 场景将来单独读 CT_DrawCall。
+            return g.LayaGL.statAgent.getElementData(statEl.CT_2DDrawCall);
         }
         return -1;
     }

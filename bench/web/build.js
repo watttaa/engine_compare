@@ -90,6 +90,18 @@ function main() {
     if (hasVendor(name)) {
       console.log('[' + name + '] ' + label + ' 产物就位');
       fs.cpSync(src, path.join(DIST, name), { recursive: true });
+      // 公平性：Laya 发布产物默认 isAntialias:true，此处关抗锯齿（对齐 Egret 默认关 / WebGPU 单采样）
+      if (name.startsWith('laya')) {
+        const idx = path.join(DIST, name, 'js', 'index.js');
+        if (fs.existsSync(idx)) {
+          let c = fs.readFileSync(idx, 'utf8');
+          if (c.indexOf('"isAntialias":true') >= 0) {
+            c = c.replace(/"isAntialias":true/g, '"isAntialias":false');
+            fs.writeFileSync(idx, c, 'utf8');
+            console.log('  ' + name + ': 关闭 isAntialias');
+          }
+        }
+      }
     } else {
       console.log('[' + name + '] ' + label + ' 待发布（vendor/' + name + '/index.html 缺失）');
     }
