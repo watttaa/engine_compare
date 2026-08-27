@@ -6,6 +6,7 @@
   "addons": {
     "laya.ui": "ui2"
   },
+  "webgpu": true,
   "splash": {
     "fit": "center"
   }
