@@ -30,19 +30,55 @@
 <script src="../../sim-core/boids-sim.js"></script>
 <script src="../../sim-core/bench-runner.js"></script>
 
-<!-- 自研 egret 引擎 5.4.1（WebGL） -->
-<script src="../../../egret-selfdev/5.4.1/build/egret/egret.js"></script>
-<script src="../../../egret-selfdev/5.4.1/build/egret/egret.web.js"></script>
+<!-- 自研 egret 引擎 5.4.1（已重编：内置 setRenderMode("webgpu") 分支） -->
+<script src="../egret-webgpu/libs/modules/egret/egret.js"></script>
+<script src="../egret-webgpu/libs/modules/egret/egret.web.js"></script>
 
 <!-- 适配器 -->
 <script src="main.js"></script>
 <script>
-  egret.runEgret({
-    renderMode: "webgl",
-    audioType: 0,
-    // 三引擎公平性：统一按 devicePixelRatio 采样（README 公平性清单第 3 条）
-    calculateCanvasScaleFactor: function () { return window.devicePixelRatio || 1; }
-  });
+  (async function () {
+    // ?backend=webgpu 走自研 WebGPU 后端；否则 WebGL。
+    // 必须在 runEgret 之前注入 egret.sys.$webgpuBackend（引擎重编版 setRenderMode 同步取用）。
+    var forced = new URLSearchParams(location.search).get('backend');
+    var backend = 'webgl';
+    if (forced === 'webgpu') {
+      try {
+        var mod = await import('../egret-webgpu/webgpu-dist/egret-webgpu-boot.js');
+        var r = await mod.installWebGPUBackendNative({});
+        if (r.backend === 'webgpu' && r.renderer) {
+          backend = 'webgpu';
+          window.__webgpu = r;
+        }
+      } catch (e) {
+        console.warn('[egret-bench] WebGPU 注入失败 → 回退 WebGL:', e);
+      }
+    }
+    window.__effectiveBackend = backend;
+    if (backend === 'webgl') {
+      // WebGL drawCall 探针：hook drawElements/drawArrays + rAF 帧计数（照搬 6_21 自比面板）
+      (function () {
+        var p1 = window.WebGLRenderingContext && WebGLRenderingContext.prototype;
+        var p2 = window.WebGL2RenderingContext && WebGL2RenderingContext.prototype;
+        window.__webglProbe = { drawTotal: 0, frameTotal: 0, lastDraw: 0, lastFrame: 0 };
+        function hook(p) {
+          if (!p || p.__benchDrawHooked) return;
+          p.__benchDrawHooked = true;
+          var de = p.drawElements, da = p.drawArrays;
+          p.drawElements = function () { window.__webglProbe.drawTotal++; return de.apply(this, arguments); };
+          p.drawArrays = function () { window.__webglProbe.drawTotal++; return da.apply(this, arguments); };
+        }
+        hook(p1); hook(p2);
+        (function fc() { window.__webglProbe.frameTotal++; requestAnimationFrame(fc); })();
+      })();
+    }
+    egret.runEgret({
+      renderMode: backend === 'webgpu' ? 'webgpu' : 'webgl',
+      audioType: 0,
+      // 三引擎公平性：统一按 devicePixelRatio 采样（README 公平性清单第 3 条）
+      calculateCanvasScaleFactor: function () { return window.devicePixelRatio || 1; }
+    });
+  })();
 </script>
 </body>
 </html>

@@ -67,7 +67,9 @@
       return;
     }
     var sep = url.indexOf('?') >= 0 ? '&' : '?';
-    location.href = url + sep + 'scene=' + APP.scene;
+    // Egret 的 backend 靠 URL 参数切（同 index.html）；Laya/Cocos 靠产物目录区分
+    var extra = (e === 'egret') ? ('backend=' + b) : '';
+    location.href = url + sep + 'scene=' + APP.scene + (extra ? '&' + extra : '');
   }
 
   // 自动对比：iframe 里跑同一引擎的两后端，轮流收集结果，出加速比
@@ -79,13 +81,6 @@
     var e = $('#engineSel').value;
     var eng = APP.engines.find(function (x) { return x.key === e; });
     var count = parseInt($('#cntSel').value, 10) || 10000;
-
-    // 自动对比依赖 ?auto=1 参数（Laya/Cocos 产物已支持）；Egret 跳转到其自比面板
-    if (e === 'egret') {
-      $('#status').textContent = '跳转 Egret 自比面板（页内一键自动测试两后端）…';
-      setTimeout(function () { location.href = 'egret-webgpu/bunnymark.html'; }, 400);
-      return;
-    }
 
     // 只跑已发布的后端
     var order = [];
@@ -111,9 +106,9 @@
       (backend === 'webgpu' ? 'WebGPU' : 'WebGL') + ' 运行中（预热3s+采样10s，约15s）…';
 
     var url = eng.backends[backend];
-    // Laya / Cocos 支持 ?auto=1&variant&count（进入即跑固定采样）；Egret 自比面板走自己的逻辑
+    // 三引擎统一支持 ?auto=1&variant&count（进入即跑固定采样）
     var params = 'auto=1&backend=' + backend;
-    if (url.indexOf('laya') >= 0 || url.indexOf('cocos') >= 0) {
+    if (url.indexOf('laya') >= 0 || url.indexOf('cocos') >= 0 || url.indexOf('egret') >= 0) {
       params += '&variant=' + (APP.scene === 'boids' ? 'boids' : 'V1') + '&count=' + count;
     }
     var sep = url.indexOf('?') >= 0 ? '&' : '?';

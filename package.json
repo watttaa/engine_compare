@@ -1,0 +1,24 @@
+{
+  "name": "engine_compare",
+  "version": "1.0.0",
+  "description": "",
+  "main": "check-webgpu-deps.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/watttaa/engine_compare.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/watttaa/engine_compare/issues"
+  },
+  "homepage": "https://github.com/watttaa/engine_compare#readme",
+  "dependencies": {
+    "puppeteer-core": "^21.11.0"
+  }
+}

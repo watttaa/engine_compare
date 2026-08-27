@@ -59,7 +59,10 @@
     this.sim = this.mode === 'boids'
       ? new BoidsSim(b.right - b.left, b.bottom - b.top)
       : new BunnySim(b);
-    egret.sys.startGetPerformance(1000); // 引擎官方统计开关
+    // 重编引擎无 startGetPerformance（API 已裁剪），drawCall 走 __webglProbe hook / __webgpu batch 计数
+    if (egret.sys.startGetPerformance) egret.sys.startGetPerformance(1000);
+    // 重置 WebGL probe 差值基准（init 在每次测试开始/预热前被调用）
+    if (window.__webglProbe) window.__webglProbe.__lastRead = window.__webglProbe.drawTotal;
   };
 
   EgretAdapter.prototype.clearAll = function () {
@@ -139,6 +142,23 @@
   };
 
   EgretAdapter.prototype.readDrawCalls = function () {
+    // WebGPU 后端：批处理器计数（_lastBatchCount / _lastDrawCalls）
+    var wr = window.__webgpu && window.__webgpu.renderer;
+    if (wr) {
+      if (wr._lastBatchCount != null) return wr._lastBatchCount;
+      if (wr._lastDrawCalls != null) return wr._lastDrawCalls;
+      return -1;
+    }
+    // WebGL 后端：窗口内 draw/frame 均值（照搬 6_21 自比面板口径，免疫基准漂移）
+    var probe = window.__webglProbe;
+    if (probe) {
+      var fd = probe.frameTotal - probe.lastFrame;
+      var dd = probe.drawTotal - probe.lastDraw;
+      probe.lastFrame = probe.frameTotal;
+      probe.lastDraw = probe.drawTotal;
+      return fd > 0 ? dd / fd : -1;
+    }
+    // 兜底：旧引擎官方统计
     var info = egret.sys.getPerformace && egret.sys.getPerformace();
     return info ? info.drawCall : -1;
   };
@@ -189,8 +209,9 @@
 
     var hud = document.createElement('div');
     hud.id = 'hud';
+    var bkLabel = (window.__effectiveBackend === 'webgpu') ? 'WebGPU' : 'WebGL';
     hud.innerHTML =
-      '<h3>🐰 Egret 自研 5.4.1 · WebGL</h3>' +
+      '<h3>🐰 Egret 自研 5.4.1 · ' + bkLabel + '</h3>' +
       '<div class="row"><span class="lbl">场景</span>' +
       '<select id="bv">' +
       '<option value="V1">Bunny V1 同纹理合批</option>' +
@@ -229,10 +250,12 @@
         BenchRunner.onSaved = function (name) { $out.textContent += ' | 已存: ' + name; };
         BenchRunner.onCopied = function () { $out.textContent += ' | 已复制 JSON'; };
 
+    var CUR_BACKEND = (window.__effectiveBackend === 'webgpu') ? 'webgpu' : 'webgl';
+
     document.getElementById('fixed').onclick = function () {
       loadAssets($v.value, function () {
         runner.fixedRun({
-          engine: 'egret-selfdev-5.4.1', variant: $v.value, backend: 'webgl',
+          engine: 'egret-selfdev-5.4.1', variant: $v.value, backend: CUR_BACKEND,
           count: parseInt($c.value, 10) || 10000, bounds: bounds
         });
         $out.textContent = '运行中（预热+采样）…';
@@ -241,7 +264,7 @@
     document.getElementById('ramp').onclick = function () {
       loadAssets($v.value, function () {
         runner.rampRun({
-          engine: 'egret-selfdev-5.4.1', variant: $v.value, backend: 'webgl',
+          engine: 'egret-selfdev-5.4.1', variant: $v.value, backend: CUR_BACKEND,
           stepCount: 1000, stepMs: 2000, maxCount: 200000, bounds: bounds
         });
         $out.textContent = '阶梯压测中…';
@@ -255,6 +278,22 @@
       adapter.step(ts);
       return false;
     }, this);
+
+    // 自动测试：?auto=1&variant=V1&count=10000（编排页 iframe 用，进入即跑固定采样）
+    var q = new URLSearchParams(location.search);
+    if (q.get('auto') === '1') {
+      window.__benchAutoStarted = true;
+      var av = q.get('variant') || 'V1';
+      var ac = parseInt(q.get('count') || '10000', 10) || 10000;
+      $v.value = av; $c.value = String(ac);
+      loadAssets(av, function () {
+        runner.fixedRun({
+          engine: 'egret-selfdev-5.4.1', variant: av, backend: CUR_BACKEND,
+          count: ac, bounds: bounds
+        });
+        $out.textContent = '自动测试运行中…';
+      });
+    }
   };
 
   function __extends(d, b) {

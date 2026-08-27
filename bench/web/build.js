@@ -164,7 +164,7 @@ function main() {
 
   // 引擎×后端 → 产物入口（相对 dist 根）
   const BACKENDS = {
-    'egret':  { name: 'Egret 自研 5.4.1', webgl: 'egret/index.html', webgpu: 'egret-webgpu/bunnymark.html' },
+    'egret':  { name: 'Egret 自研 5.4.1', webgl: 'egret/index.html', webgpu: 'egret/index.html' },
     'laya':   { name: 'LayaAir 3.4',      webgl: 'laya-webgl/index.html', webgpu: 'laya/index.html' },
     'cocos':  { name: 'Cocos Creator 3.8.8', webgl: 'cocos-webgl/index.html', webgpu: 'cocos/index.html' }
   };
