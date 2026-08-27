@@ -80,31 +80,67 @@ function main() {
   fs.cpSync(EGRET_WEBGPU, path.join(DIST, 'egret-webgpu'), { recursive: true });
 
   // 5. Laya / Cocos 各后端产物（从 vendor 拷贝）
+  // Laya：两份独立产物（webgpu 开关决定引擎库不同，无法单源派生）
   for (const [name, label] of [
     ['laya', 'LayaAir WebGPU'],
-    ['laya-webgl', 'LayaAir WebGL'],
-    ['cocos', 'Cocos WebGPU'],
-    ['cocos-webgl', 'Cocos WebGL']
+    ['laya-webgl', 'LayaAir WebGL']
   ]) {
     const src = path.join(VENDOR, name);
     if (hasVendor(name)) {
       console.log('[' + name + '] ' + label + ' 产物就位');
       fs.cpSync(src, path.join(DIST, name), { recursive: true });
       // 公平性：Laya 发布产物默认 isAntialias:true，此处关抗锯齿（对齐 Egret 默认关 / WebGPU 单采样）
-      if (name.startsWith('laya')) {
-        const idx = path.join(DIST, name, 'js', 'index.js');
-        if (fs.existsSync(idx)) {
-          let c = fs.readFileSync(idx, 'utf8');
-          if (c.indexOf('"isAntialias":true') >= 0) {
-            c = c.replace(/"isAntialias":true/g, '"isAntialias":false');
-            fs.writeFileSync(idx, c, 'utf8');
-            console.log('  ' + name + ': 关闭 isAntialias');
-          }
+      const idx = path.join(DIST, name, 'js', 'index.js');
+      if (fs.existsSync(idx)) {
+        let c = fs.readFileSync(idx, 'utf8');
+        if (c.indexOf('"isAntialias":true') >= 0) {
+          c = c.replace(/"isAntialias":true/g, '"isAntialias":false');
+          fs.writeFileSync(idx, c, 'utf8');
+          console.log('  ' + name + ': 关闭 isAntialias');
         }
       }
     } else {
       console.log('[' + name + '] ' + label + ' 待发布（vendor/' + name + '/index.html 缺失）');
     }
+  }
+
+  // Cocos：单源双臂。vendor/cocos 是唯一构建产物；
+  // dist/cocos = renderMode:4（WebGPU，不支持时引擎自动回退 WebGL）
+  // dist/cocos-webgl = renderMode:2（强制 WebGL）
+  // 同一份二进制只差 renderMode —— 后端对比的最严格控制变量。
+  if (hasVendor('cocos')) {
+    console.log('[cocos] 构建产物就位，派生双后端臂');
+    for (const [dir, renderMode] of [['cocos', 4], ['cocos-webgl', 2]]) {
+      fs.cpSync(path.join(VENDOR, 'cocos'), path.join(DIST, dir), { recursive: true });
+      // patch 1: settings.json rendering.renderMode
+      const st = path.join(DIST, dir, 'src', 'settings.json');
+      if (fs.existsSync(st)) {
+        let c = fs.readFileSync(st, 'utf8');
+        c = c.replace(/"rendering"\s*:\s*\{/, '"rendering":{"renderMode":' + renderMode + ',');
+        fs.writeFileSync(st, c, 'utf8');
+      }
+      // patch 2: assets/main/index.js —— 后端探测改为看实际设备（renderMode:2 时 navigator.gpu 仍存在）
+      const mi = path.join(DIST, dir, 'assets', 'main', 'index.js');
+      if (fs.existsSync(mi)) {
+        let c = fs.readFileSync(mi, 'utf8');
+        const old = 'this.liveBackend="undefined"!=typeof navigator&&navigator.gpu?"webgpu":"webgl"';
+        if (c.indexOf(old) >= 0) {
+          c = c.replace(old,
+            'this.liveBackend=window.cc&&cc.director&&cc.director.root&&cc.director.root.device&&cc.director.root.device.gl?"webgl":"webgpu"');
+          fs.writeFileSync(mi, c, 'utf8');
+        }
+        // patch 3: 自动测试 shim —— ?auto=1 时模拟点固定采样按钮（轮询等 HUD 就绪）
+        const shim = '\n(function(){var q=new URLSearchParams(location.search);' +
+          'if(q.get("auto")==="1"){var tries=0;var t=setInterval(function(){' +
+          'var sv=document.querySelector("#cbv"),sc=document.querySelector("#ccnt"),b=document.querySelector("#cfixed");' +
+          'if(b){clearInterval(t);if(sv)sv.value=q.get("variant")||"V1";' +
+          'if(sc)sc.value=q.get("count")||"10000";b.click();}else if(++tries>60){clearInterval(t);}},500);}})();\n';
+        fs.appendFileSync(mi, shim, 'utf8');
+      }
+      console.log('  dist/' + dir + '（renderMode=' + renderMode + '）');
+    }
+  } else {
+    console.log('[cocos] 待发布（vendor/cocos/index.html 缺失，双臂均跳过）');
   }
 
   // 6. 导航页（四场景入口）+ 四个测试子界面（总控面板）
@@ -170,7 +206,8 @@ function main() {
   for (const s of SCENES) {
     const engines = [];
     for (const [key, info] of Object.entries(BACKENDS)) {
-      const webglOk = key === 'egret' || hasVendor(key === 'laya' ? 'laya-webgl' : 'cocos-webgl');
+      // cocos 双臂派生自同一 vendor/cocos；laya 是两份独立产物
+      const webglOk = key === 'egret' || hasVendor(key === 'laya' ? 'laya-webgl' : 'cocos');
       const webgpuOk = key === 'egret' || hasVendor(key);
       const bs = {};
       if (webgpuOk) bs.webgpu = info.webgpu;
@@ -205,7 +242,7 @@ function main() {
 
   console.log('== 完成：' + path.relative(ROOT, DIST) + ' ==');
   console.log('    laya=' + hasVendor('laya') + ' laya-webgl=' + hasVendor('laya-webgl') +
-    ' cocos=' + hasVendor('cocos') + ' cocos-webgl=' + hasVendor('cocos-webgl'));
+    ' cocos(双臂)=' + hasVendor('cocos'));
 }
 
 main();

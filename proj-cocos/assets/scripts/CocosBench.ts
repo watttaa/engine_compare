@@ -52,6 +52,18 @@ export class CocosBench extends Component {
         this.stats = new BenchStats();
         this.runner = new BenchRunner(this.adapter, this.stats);
         this.buildHud();
+
+        // 自动测试：?auto=1&variant=V1&count=10000（编排页 iframe 用，进入即跑固定采样）
+        const q = new URLSearchParams(location.search);
+        if (q.get('auto') === '1') {
+            const variant = q.get('variant') || 'V1';
+            const count = parseInt(q.get('count') || '10000', 10) || 10000;
+            const $v = document.querySelector('#cbv') as HTMLSelectElement;
+            const $c = document.querySelector('#ccnt') as HTMLInputElement;
+            if ($v) { $v.value = variant; }
+            if ($c) { $c.value = String(count); }
+            this.runVariant(variant, count, 'fixed');
+        }
     }
 
     /** 帧回调入口：与 egret/laya 适配器保持同一相对位置 */
@@ -87,16 +99,14 @@ export class CocosBench extends Component {
     private runVariant(variant: string, count: number, mode: 'fixed' | 'ramp') {
         this.loadAssets(variant, () => {
             const bounds = { left: 0, top: 0, right: this.W, bottom: this.H };
-            // 后端探测：当前项目已启用 gfx-webgpu 模块；若 navigator.gpu 可用则视为 webgpu 后端
-            const backend = (typeof navigator !== 'undefined' && (navigator as any).gpu) ? 'webgpu' : 'webgl';
             if (mode === 'fixed') {
                 this.runner.fixedRun({
-                    engine: 'cocos-creator-3.8.8', variant, backend,
+                    engine: 'cocos-creator-3.8.8', variant, backend: this.liveBackend,
                     count, bounds
                 });
             } else {
                 this.runner.rampRun({
-                    engine: 'cocos-creator-3.8.8', variant, backend,
+                    engine: 'cocos-creator-3.8.8', variant, backend: this.liveBackend,
                     stepCount: 1000, stepMs: 2000, maxCount: 200000, bounds
                 });
             }
@@ -136,7 +146,10 @@ export class CocosBench extends Component {
         const runner = this.runner;
         const adapter = this.adapter;
         // 运行时后端探测
-        this.liveBackend = (typeof navigator !== 'undefined' && (navigator as any).gpu) ? 'webgpu' : 'webgl';
+        // 运行时后端探测：看实际 gfx 设备（WebGL 设备有 gl 属性，WebGPU 没有）。
+        // 不用 navigator.gpu 猜——renderMode 强制 WebGL 时 navigator.gpu 依然存在
+        const dev: any = (director.root as any) ? (director.root as any).device : null;
+        this.liveBackend = (dev && dev.gl) ? 'webgl' : 'webgpu';
 
         const style = document.createElement('style');
         style.textContent =

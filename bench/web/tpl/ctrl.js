@@ -104,9 +104,9 @@
       (backend === 'webgpu' ? 'WebGPU' : 'WebGL') + ' 运行中（预热3s+采样10s，约15s）…';
 
     var url = eng.backends[backend];
-    // Laya 支持 ?auto=1&variant&count；其他产物返回 scene 参数即可（Egret 自比面板走自己的逻辑）
+    // Laya / Cocos 支持 ?auto=1&variant&count（进入即跑固定采样）；Egret 自比面板走自己的逻辑
     var params = 'auto=1&backend=' + backend;
-    if (url.indexOf('laya') >= 0) {
+    if (url.indexOf('laya') >= 0 || url.indexOf('cocos') >= 0) {
       params += '&variant=' + (APP.scene === 'boids' ? 'boids' : 'V1') + '&count=' + count;
     }
     var sep = url.indexOf('?') >= 0 ? '&' : '?';
@@ -115,8 +115,8 @@
     iframe.src = url + sep + params;
     document.body.appendChild(iframe);
 
-    // 轮询 iframe 里的 __benchLastResult（Laya 自动跑完会写）
-    var deadline = Date.now() + 40000;
+    // 轮询 iframe 里的 __benchLastResult（引擎自动跑完会写；Cocos 启动较慢给足时间）
+    var deadline = Date.now() + 70000;
     var watch = setInterval(function () {
       if (Date.now() > deadline) {
         clearInterval(watch);
