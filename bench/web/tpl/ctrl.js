@@ -80,6 +80,12 @@
     var eng = APP.engines.find(function (x) { return x.key === e; });
     var count = parseInt($('#cntSel').value, 10) || 10000;
 
+    // 自动对比依赖 ?auto=1 参数（Laya/Cocos 产物已支持；Egret 请用其自带的一键自比面板）
+    if (e === 'egret') {
+      $('#status').textContent = 'Egret 暂不支持 iframe 自动对比——请进 Egret WebGPU vs WebGL 自比面板（页内有「一键自动测试」）。';
+      return;
+    }
+
     // 只跑已发布的后端
     var order = [];
     if (eng.backends.webgpu) order.push('webgpu');

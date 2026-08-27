@@ -120,22 +120,33 @@ function main() {
         fs.writeFileSync(st, c, 'utf8');
       }
       // patch 2: assets/main/index.js —— 后端探测改为看实际设备（renderMode:2 时 navigator.gpu 仍存在）
+      //          + V3 纹理选择修复（旧构建 bug：V3 误用 12 张轮换，应为单贴图+变换）
       const mi = path.join(DIST, dir, 'assets', 'main', 'index.js');
       if (fs.existsSync(mi)) {
         let c = fs.readFileSync(mi, 'utf8');
-        const old = 'this.liveBackend="undefined"!=typeof navigator&&navigator.gpu?"webgpu":"webgl"';
-        if (c.indexOf(old) >= 0) {
-          c = c.replace(old,
+        let patched = [];
+        const oldBackend = 'this.liveBackend="undefined"!=typeof navigator&&navigator.gpu?"webgpu":"webgl"';
+        if (c.indexOf(oldBackend) >= 0) {
+          c = c.replace(oldBackend,
             'this.liveBackend=window.cc&&cc.director&&cc.director.root&&cc.director.root.device&&cc.director.root.device.gl?"webgl":"webgpu"');
-          fs.writeFileSync(mi, c, 'utf8');
+          patched.push('backend-detect');
         }
-        // patch 3: 自动测试 shim —— ?auto=1 时模拟点固定采样按钮（轮询等 HUD 就绪）
+        const oldV3 = '"boids"===this.mode?this.frames[this.sim.list[t].species%this.frames.length]:"V1"===this.variant?this.frames[0]:this.frames[t%this.frames.length]';
+        if (c.indexOf(oldV3) >= 0) {
+          c = c.replace(oldV3,
+            '"boids"===this.mode?this.frames[this.sim.list[t].species%this.frames.length]:("V1"===this.variant||"V3"===this.variant)?this.frames[0]:this.frames[t%this.frames.length]');
+          patched.push('V3-texture');
+        }
+        if (patched.length) fs.writeFileSync(mi, c, 'utf8');
+        // patch 3: 自动测试 shim —— ?auto=1 时模拟点固定采样按钮（轮询等 HUD 就绪；
+        //          若源码级 auto 已跑过（__benchAutoStarted 标记）则跳过，防双重触发）
         const shim = '\n(function(){var q=new URLSearchParams(location.search);' +
-          'if(q.get("auto")==="1"){var tries=0;var t=setInterval(function(){' +
+          'if(q.get("auto")==="1"&&!window.__benchAutoStarted){var tries=0;var t=setInterval(function(){' +
           'var sv=document.querySelector("#cbv"),sc=document.querySelector("#ccnt"),b=document.querySelector("#cfixed");' +
           'if(b){clearInterval(t);if(sv)sv.value=q.get("variant")||"V1";' +
           'if(sc)sc.value=q.get("count")||"10000";b.click();}else if(++tries>60){clearInterval(t);}},500);}})();\n';
         fs.appendFileSync(mi, shim, 'utf8');
+        if (patched.length) console.log('  dist/' + dir + ' patches: ' + patched.join(','));
       }
       console.log('  dist/' + dir + '（renderMode=' + renderMode + '）');
     }

@@ -557,7 +557,7 @@
     }
     makeSprite(i) {
       const g = globalThis;
-      const tex = this.mode === "boids" ? this.textures[this.sim.list[i].species % this.textures.length] : this.variant === "V1" ? this.textures[0] : this.textures[i % this.textures.length];
+      const tex = this.mode === "boids" ? this.textures[this.sim.list[i].species % this.textures.length] : (this.variant === "V1" || this.variant === "V3") ? this.textures[0] : this.textures[i % this.textures.length];
       const sp = new g.Laya.Sprite();
       sp.texture = tex;
       sp.pivot(13, this.mode === "boids" ? 18 : 37);

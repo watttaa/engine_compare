@@ -54,8 +54,10 @@ export class CocosBench extends Component {
         this.buildHud();
 
         // 自动测试：?auto=1&variant=V1&count=10000（编排页 iframe 用，进入即跑固定采样）
+        // 标记 __benchAutoStarted，防止 build.js 注入的 shim 再触发一次（双重触发）
         const q = new URLSearchParams(location.search);
         if (q.get('auto') === '1') {
+            (window as any).__benchAutoStarted = true;
             const variant = q.get('variant') || 'V1';
             const count = parseInt(q.get('count') || '10000', 10) || 10000;
             const $v = document.querySelector('#cbv') as HTMLSelectElement;
@@ -90,6 +92,7 @@ export class CocosBench extends Component {
             const dc = this.adapter.readDrawCalls ? this.adapter.readDrawCalls() : -1;
             this.liveEl.textContent =
                 '后端: ' + this.liveBackend + '\n' +
+                '视口: ' + this.W + '×' + this.H + '\n' +
                 '数量: ' + this.adapter.nodeCount() + '\n' +
                 'FPS: ' + (1000 / this.liveFpsEma).toFixed(1) + '\n' +
                 (dc >= 0 ? 'drawCall: ' + Math.round(dc) : '');
@@ -311,9 +314,11 @@ class CocosAdapter {
     }
 
     private makeNode(i: number): Node {
+        // 纹理选择（三引擎一致，SPEC 1.1）：
+        //  boids: 鱼种 5 张轮换；V1/V3: 单贴图（V3=单贴图+变换）；V2: 8 张轮换；V4: 12 张轮换
         const frame = this.mode === 'boids'
             ? this.frames[this.sim.list[i].species % this.frames.length]
-            : this.variant === 'V1' ? this.frames[0]
+            : (this.variant === 'V1' || this.variant === 'V3') ? this.frames[0]
                 : this.frames[i % this.frames.length];
         const n = new Node();
         const sp = n.addComponent(Sprite);

@@ -73,7 +73,7 @@ export class LayaBench {
     /** 载入贴图并跑固定采样（HUD 按钮与自动测试共用） */
     private static loadAndRun(Laya: any, runner: any, adapter: any, backend: string,
         $v: HTMLSelectElement, $c: HTMLInputElement): void {
-        const $out = document.querySelector('#out') as HTMLElement;
+        const $live = document.querySelector('#live') as HTMLElement;
         const variant = $v ? $v.value : 'V1';
         const count = $c ? parseInt($c.value, 10) || 10000 : 10000;
         const names = variant === 'boids' ? FISH_IMGS
@@ -86,7 +86,7 @@ export class LayaBench {
             runner.fixedRun({
                 engine: 'layaair-3.4.0', variant, backend, count
             });
-            if ($out) $out.textContent = '运行中…';
+            if ($live) { $live.textContent = '运行中…'; }
         }));
     }
 
@@ -104,6 +104,7 @@ export class LayaBench {
             const dc = adapter.readDrawCalls ? adapter.readDrawCalls() : -1;
             liveEl.textContent =
                 '后端: ' + liveBackend + '\n' +
+                '视口: ' + adapter.W + '×' + adapter.H + '\n' +
                 '数量: ' + adapter.nodeCount() + '\n' +
                 'FPS: ' + (1000 / liveFpsEma).toFixed(1) + '\n' +
                 (dc >= 0 ? 'drawCall: ' + Math.round(dc) : '');
@@ -294,9 +295,11 @@ class LayaAdapter {
 
     private makeSprite(i: number): any {
         const g: any = globalThis as any;
+        // 纹理选择（三引擎一致，SPEC 1.1）：
+        //  boids: 鱼种 5 张轮换；V1/V3: 单贴图（V3=单贴图+变换）；V2: 8 张轮换；V4: 12 张轮换
         const tex = this.mode === 'boids'
             ? this.textures[this.sim.list[i].species % this.textures.length]
-            : this.variant === 'V1' ? this.textures[0]
+            : (this.variant === 'V1' || this.variant === 'V3') ? this.textures[0]
                 : this.textures[i % this.textures.length];
         const sp = new g.Laya.Sprite();
         sp.texture = tex;
