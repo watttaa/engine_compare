@@ -350,6 +350,53 @@
         if (cur + r.stepCount <= r.maxCount) this.adapter.setCount(cur + r.stepCount);
       }
     };
+    BenchRunner.prototype.autoRamp = function(opts) {
+      var o = opts || {};
+      var IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(global.navigator.userAgent);
+      var COUNTS = o.counts || (IS_MOBILE ? [1e3, 2e3, 4e3, 8e3, 15e3, 25e3, 4e4, 6e4] : [2e3, 5e3, 1e4, 2e4, 4e4, 7e4, 11e4, 16e4, 22e4, 3e5]);
+      var self = this;
+      var cap = 0, jankAt = null, idx = 0;
+      var onLevel = o.onLevel || function() {
+      };
+      var onDone = o.onDone || function() {
+      };
+      this._autoStop = false;
+      function step() {
+        if (self._autoStop || idx >= COUNTS.length) {
+          onDone({ cap, jankAt, capped: cap >= COUNTS[COUNTS.length - 1] });
+          return;
+        }
+        var n = COUNTS[idx];
+        onLevel({ phase: "start", count: n, index: idx, total: COUNTS.length });
+        var prevReport = self.onReport;
+        self.onReport = function(json) {
+          self.onReport = prevReport;
+          var stable = json.fps >= 55;
+          var jank = json.fps < 50;
+          if (stable) cap = n;
+          if (jank && jankAt == null) jankAt = n;
+          onLevel({ phase: "done", count: n, index: idx, total: COUNTS.length, json, stable });
+          idx++;
+          if (jank) {
+            onDone({ cap, jankAt, capped: false });
+            return;
+          }
+          step();
+        };
+        self.fixedRun({
+          engine: o.engine || self.stats.meta.engine,
+          variant: o.variant || self.stats.meta.variant,
+          backend: o.backend || self.stats.meta.backend,
+          count: n,
+          preWarmSec: 1.2,
+          sampleSec: 2
+        });
+      }
+      step();
+    };
+    BenchRunner.prototype.stopAuto = function() {
+      this._autoStop = true;
+    };
     BenchRunner.saveDirHandle = null;
     BenchRunner.onSaved = null;
     BenchRunner.onCopied = null;
@@ -366,6 +413,10 @@
     BenchRunner.exportJSON = function(json) {
       var name = "bench_" + (json.meta.engine || "x") + "_" + (json.meta.variant || "x") + "_" + Date.now() + ".json";
       var text = JSON.stringify(json, null, 2);
+      try {
+        global.__benchLastResult = json;
+      } catch (e) {
+      }
       function download() {
         var blob = new Blob([text], { type: "application/json" });
         var a = document.createElement("a");
@@ -455,6 +506,10 @@
   ];
   var FISH_IMGS = BUNNY_IMGS.slice(1, 6);
   var RES_PREFIX = "resources/bench/";
+  var liveEl = null;
+  var liveBackend = "";
+  var liveLastTs = 0;
+  var liveFpsEma = 16.7;
   var LayaBench = class _LayaBench {
     static start() {
       const g = globalThis;
@@ -472,39 +527,85 @@
         const ts = performance.now();
         runner.tick(ts);
         adapter.step(ts);
+        _LayaBench.updateLive(ts, runner, adapter);
       });
+      const q = new URLSearchParams(location.search);
+      if (q.get("auto") === "1") {
+        const variant = q.get("variant") || "V1";
+        const count = parseInt(q.get("count") || "10000", 10) || 1e4;
+        const $v = document.querySelector("#lv");
+        const $c = document.querySelector("#cnt");
+        if ($v) {
+          $v.value = variant;
+        }
+        if ($c) {
+          $c.value = String(count);
+        }
+        _LayaBench.loadAndRun(Laya2, runner, adapter, backend, $v, $c);
+      }
+    }
+    /** 载入贴图并跑固定采样（HUD 按钮与自动测试共用） */
+    static loadAndRun(Laya2, runner, adapter, backend, $v, $c) {
+      const $live = document.querySelector("#live");
+      const variant = $v ? $v.value : "V1";
+      const count = $c ? parseInt($c.value, 10) || 1e4 : 1e4;
+      const names = variant === "boids" ? FISH_IMGS : variant === "V1" ? BUNNY_IMGS.slice(0, 1) : variant === "V2" ? BUNNY_IMGS.slice(0, 8) : BUNNY_IMGS;
+      const urls = names.map((n) => RES_PREFIX + n);
+      Laya2.loader.load(urls, Laya2.Handler.create(null, () => {
+        adapter.textures = urls.map((u) => Laya2.loader.getRes(u));
+        runner.fixedRun({
+          engine: "layaair-3.4.0",
+          variant,
+          backend,
+          count
+        });
+        if ($live) {
+          $live.textContent = "运行中…";
+        }
+      }));
+    }
+    /** 实时读数：每 400ms 刷新一次（对齐 6_21 面板） */
+    static updateLive(ts, runner, adapter) {
+      if (liveLastTs) {
+        const dt = Math.min(ts - liveLastTs, 100);
+        liveFpsEma = liveFpsEma * 0.9 + dt * 0.1;
+      }
+      liveLastTs = ts;
+      if (!liveEl) return;
+      const now = performance.now();
+      if (now - window.__layaLastLive > 400) {
+        window.__layaLastLive = now;
+        const dc = adapter.readDrawCalls ? adapter.readDrawCalls() : -1;
+        liveEl.textContent = "后端: " + liveBackend + "\n视口: " + adapter.W + "×" + adapter.H + "\n数量: " + adapter.nodeCount() + "\nFPS: " + (1e3 / liveFpsEma).toFixed(1) + "\n" + (dc >= 0 ? "drawCall: " + Math.round(dc) : "");
+      }
     }
     static buildHud(Laya2, runner, adapter, backend) {
+      liveBackend = backend;
       const style = document.createElement("style");
-      style.textContent = '#hud{position:fixed;left:8px;top:8px;z-index:99998;background:rgba(16,22,30,.86);backdrop-filter:blur(6px);border:1px solid #2b3947;border-radius:10px;padding:10px 12px;color:#e6edf3;font:13px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;width:360px;max-width:92vw;max-height:96vh;overflow:auto}#hud h3{margin:0 0 8px;font-size:13px;color:#7fd4ff;font-weight:600}#hud .row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}#hud .lbl{width:40px;color:#8aa0b4;flex:none;font-size:12px}#hud select,#hud input{background:#0d1218;color:#e6edf3;border:1px solid #33475a;border-radius:7px;padding:4px 8px;font-size:12px}#hud input{width:70px}#hud button{background:#1d2833;color:#cdd9e5;border:1px solid #33475a;border-radius:7px;padding:4px 10px;cursor:pointer;font-size:12px}#hud button:hover:not(:disabled){background:#27405f}#hud button:disabled{opacity:.45;cursor:default}#hud button.primary{background:#2f6feb;border-color:#2f6feb;color:#fff;font-weight:600}#hud .live{background:#0d1218;border:1px solid #2b3947;border-radius:8px;padding:7px 9px;white-space:pre;font:11px/1.6 ui-monospace,Consolas,monospace;color:#9fe8a8}#hud .tip{margin-top:6px;font-size:11.5px;color:#7d93a8;line-height:1.5}';
+      style.textContent = '#hud{position:fixed;left:8px;top:8px;z-index:99998;background:rgba(16,22,30,.86);backdrop-filter:blur(6px);border:1px solid #2b3947;border-radius:10px;padding:10px 12px;color:#e6edf3;font:13px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;width:380px;max-width:92vw;max-height:96vh;overflow:auto}#hud h3{margin:0 0 8px;font-size:13px;color:#7fd4ff;font-weight:600}#hud .row{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}#hud .lbl{width:40px;color:#8aa0b4;flex:none;font-size:12px}#hud select,#hud input{background:#0d1218;color:#e6edf3;border:1px solid #33475a;border-radius:7px;padding:4px 8px;font-size:12px}#hud input{width:70px}#hud button{background:#1d2833;color:#cdd9e5;border:1px solid #33475a;border-radius:7px;padding:4px 10px;cursor:pointer;font-size:12px}#hud button:hover:not(:disabled){background:#27405f}#hud button:disabled{opacity:.45;cursor:default}#hud button.primary{background:#2f6feb;border-color:#2f6feb;color:#fff;font-weight:600}#hud button.danger{background:#7a2f2f;border-color:#7a2f2f;color:#fff}#hud .live{background:#0d1218;border:1px solid #2b3947;border-radius:8px;padding:7px 9px;white-space:pre;font:11px/1.6 ui-monospace,Consolas,monospace;color:#9fe8a8}#hud .bar{height:4px;background:#0d1218;border-radius:2px;overflow:hidden;margin:6px 0}#hud .bar .fill{height:100%;width:0;background:#2f6feb;transition:width .2s}#hud #report{background:#0d1218;border:1px solid #2b3947;border-radius:8px;padding:7px 9px;white-space:pre-wrap;font:11px/1.6 ui-monospace,Consolas,monospace;color:#cdd9e5;max-height:30vh;overflow:auto;display:none}#hud .tip{margin-top:6px;font-size:11.5px;color:#7d93a8;line-height:1.5}';
       document.head.appendChild(style);
       const hud = document.createElement("div");
       hud.id = "hud";
-      hud.innerHTML = "<h3>🐰 LayaAir 3.4 [" + backend + ']</h3><div class="row"><span class="lbl">场景</span><select id="lv"><option value="V1">Bunny V1 同纹理合批</option><option value="V2">Bunny V2 atlas多帧</option><option value="V3">Bunny V3 随机变换</option><option value="V4">Bunny V4 不合批</option><option value="boids">水族馆 2D Boids</option></select></div><div class="row"><span class="lbl">数量</span><input id="cnt" type="number" value="10000" step="1000"><button id="fixed" class="primary">固定采样</button><button id="ramp">阶梯压测</button></div><div class="live" id="out">待命中…</div><div class="tip">固定采样：预热 3s + 采样 10s 出 P50/P95/P99；阶梯压测：每 2s +1000，跌破 55fps 持续 2s 判定承载力。结果 JSON 自动复制。</div>';
+      hud.innerHTML = "<h3>🐰 LayaAir 3.4 [" + backend + ']</h3><div class="row"><span class="lbl">场景</span><select id="lv"><option value="V1">Bunny V1 同纹理合批</option><option value="V2">Bunny V2 atlas多帧</option><option value="V3">Bunny V3 随机变换</option><option value="V4">Bunny V4 不合批</option><option value="boids">水族馆 2D Boids</option></select></div><div class="row"><span class="lbl">数量</span><input id="cnt" type="number" value="10000" step="1000"><button id="fixed" class="primary">固定采样</button><button id="ramp">阶梯压测</button></div><div class="row"><span class="lbl">增减</span><button id="add1k">+1千</button><button id="sub1k">-1千</button><button id="add10k">+1万</button><button id="sub10k">-1万</button></div><div class="row"><button id="autoBtn" class="primary">▶ 一键自动测试</button><button id="stopBtn" class="danger">停止</button></div><div class="live" id="live">等待首帧…</div><div class="bar"><div class="fill" id="progFill"></div></div><div id="report"></div><div class="tip">固定采样：预热 3s + 采样 10s 出 P50/P95/P99。一键自动测试：档位阶梯逐级加压（预热1.2s+采样2s），≥55fps 记承载力，&lt;50fps 掉帧即停。结果 JSON 自动复制。</div>';
       document.body.appendChild(hud);
       const $v = hud.querySelector("#lv");
       const $c = hud.querySelector("#cnt");
-      const $out = hud.querySelector("#out");
+      const $out = hud.querySelector("#report");
+      const $live = hud.querySelector("#live");
+      const $fill = hud.querySelector("#progFill");
+      liveEl = $live;
       runner.onReport = (json) => {
-        $out.innerHTML = "完成: " + JSON.stringify(json).slice(0, 500);
+        $live.textContent = "完成: fps=" + json.fps + " p50=" + json.p50 + "ms p95=" + json.p95 + "ms p99=" + json.p99 + "ms dc=" + json.drawCallAvg + " nodes=" + json.nodeCount;
         globalThis.BenchRunner.exportJSON(json);
       };
       globalThis.BenchRunner.onSaved = (name) => {
-        $out.textContent += " | 已存: " + name;
+        $live.textContent += " | 已存: " + name;
       };
       globalThis.BenchRunner.onCopied = () => {
-        $out.textContent += " | 已复制 JSON";
+        $live.textContent += " | 已复制 JSON";
       };
       hud.querySelector("#fixed").addEventListener("click", () => {
-        loadAssets($v.value, () => {
-          runner.fixedRun({
-            engine: "layaair-3.4.0",
-            variant: $v.value,
-            backend,
-            count: parseInt($c.value, 10) || 1e4
-          });
-          $out.textContent = "运行中…";
-        });
+        _LayaBench.loadAndRun(Laya2, runner, adapter, backend, $v, $c);
       });
       hud.querySelector("#ramp").addEventListener("click", () => {
         loadAssets($v.value, () => {
@@ -516,8 +617,58 @@
             stepMs: 2e3,
             maxCount: 2e5
           });
-          $out.textContent = "阶梯压测中…";
+          $live.textContent = "阶梯压测中…";
         });
+      });
+      const bump = (d) => {
+        if (!adapter.sim) {
+          loadAssets($v.value, () => {
+          });
+        }
+        const cur = adapter.nodeCount();
+        const next = Math.max(0, cur + d);
+        adapter.setCount(next);
+        $c.value = String(next);
+      };
+      hud.querySelector("#add1k").addEventListener("click", () => bump(1e3));
+      hud.querySelector("#sub1k").addEventListener("click", () => bump(-1e3));
+      hud.querySelector("#add10k").addEventListener("click", () => bump(1e4));
+      hud.querySelector("#sub10k").addEventListener("click", () => bump(-1e4));
+      hud.querySelector("#autoBtn").addEventListener("click", () => {
+        loadAssets($v.value, () => {
+          $out.style.display = "block";
+          const lines = ["== 承载力测试 [" + backend + " · " + $v.value + "] =="];
+          $out.textContent = lines.join("\n");
+          runner.autoRamp({
+            engine: "layaair-3.4.0",
+            variant: $v.value,
+            backend,
+            onLevel: (lv) => {
+              if (lv.phase === "start") {
+                $fill.style.width = (lv.index / lv.total * 100).toFixed(1) + "%";
+                $live.textContent = lv.count + " 只 · 稳定中…";
+              } else {
+                $fill.style.width = ((lv.index + 1) / lv.total * 100).toFixed(1) + "%";
+                const j = lv.json;
+                lines.push("  " + lv.count + " 只: " + j.fps + "fps " + (lv.stable ? "✓稳" : "✗掉帧") + " | p95 " + j.p95 + "ms | dc " + j.drawCallAvg);
+                $out.textContent = lines.join("\n");
+                globalThis.BenchRunner.exportJSON(j);
+              }
+            },
+            onDone: (r) => {
+              if (r.capped) lines.push("▶ ⚠ 最高档 " + r.cap + " 只仍未掉帧：承载力被天花板截断");
+              else if (r.jankAt != null) lines.push("▶ 承载力: " + r.cap + " 只稳 ≥55fps（" + r.jankAt + " 只掉帧）");
+              else lines.push("▶ 承载力: " + r.cap + " 只");
+              $out.textContent = lines.join("\n");
+              $fill.style.width = "100%";
+              $live.textContent = "自动测试完成，承载力 " + r.cap + " 只。";
+            }
+          });
+        });
+      });
+      hud.querySelector("#stopBtn").addEventListener("click", () => {
+        runner.stopAuto();
+        $live.textContent = "已停止。";
       });
       function loadAssets(variant, cb) {
         const names = variant === "boids" ? FISH_IMGS : variant === "V1" ? BUNNY_IMGS.slice(0, 1) : variant === "V2" ? BUNNY_IMGS.slice(0, 8) : BUNNY_IMGS;
@@ -557,7 +708,7 @@
     }
     makeSprite(i) {
       const g = globalThis;
-      const tex = this.mode === "boids" ? this.textures[this.sim.list[i].species % this.textures.length] : (this.variant === "V1" || this.variant === "V3") ? this.textures[0] : this.textures[i % this.textures.length];
+      const tex = this.mode === "boids" ? this.textures[this.sim.list[i].species % this.textures.length] : this.variant === "V1" || this.variant === "V3" ? this.textures[0] : this.textures[i % this.textures.length];
       const sp = new g.Laya.Sprite();
       sp.texture = tex;
       sp.pivot(13, this.mode === "boids" ? 18 : 37);
@@ -613,9 +764,7 @@
       const g = globalThis;
       const statEl = g.StatElement || g.Laya && g.Laya.StatElement;
       if (g.LayaGL && g.LayaGL.statAgent && statEl) {
-        const dc2d = g.LayaGL.statAgent.getElementData(statEl.CT_2DDrawCall);
-        const dcAll = g.LayaGL.statAgent.getElementData(statEl.CT_DrawCall);
-        return dc2d + dcAll;
+        return g.LayaGL.statAgent.getElementData(statEl.CT_2DDrawCall);
       }
       return -1;
     }
