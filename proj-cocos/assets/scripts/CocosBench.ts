@@ -12,11 +12,56 @@
  *  - DrawCall: director.root.device.numDrawCalls（gfx/base/device.ts getter）
  *  - 3.8.8 gfx 自带 WebGPU 后端（cocos/gfx/webgpu/），后续可切换后端对照
  */
-import { _decorator, Component, Node, Sprite, SpriteFrame, UITransform, resources, director, view, macro } from 'cc';
+import { _decorator, Component, Node, Sprite, SpriteFrame, UITransform, resources, director, view, macro, Director, game } from 'cc';
 
 // 【公平性·SPEC 0】关抗锯齿，对齐 Egret（默认关）与 WebGPU（单采样）。
 // 模块顶层执行：本脚本随场景加载，早于 swapchain 创建，宏读取时已生效。
 (macro as any).ENABLE_WEBGL_ANTIALIAS = false;
+
+// 【drawCall 探针·模块顶层安装】必须在引擎创建 WebGL 上下文之前：
+//  1. Cocos 3.8.8 WebGL 后端 device.numDrawCalls 恒 0（webgl2-command-buffer 从不递增）
+//  2. 2D 合批走 WEBGL_multi_draw 扩展（方法在扩展对象上，不在原型上）
+//     → hook 原型 draw* + 包一层 getExtension 拦截扩展对象
+// 口径与 Egret WebGL probe 一致：窗口内 draw/frame 均值
+const __glProbe: any = { drawTotal: 0, frameTotal: 0, lastDraw: 0, lastFrame: 0 };
+(function installGlProbe() {
+    const g: any = window as any;
+    function hookDraws(obj: any) {
+        if (!obj || obj.__benchHooked) return;
+        obj.__benchHooked = true;
+        for (const nm of ['drawElements', 'drawArrays', 'drawElementsInstanced', 'drawArraysInstanced',
+            'multiDrawArraysWEBGL', 'multiDrawElementsWEBGL', 'multiDrawArraysInstancedWEBGL', 'multiDrawElementsInstancedWEBGL']) {
+            const orig = obj[nm];
+            if (typeof orig !== 'function') continue;
+            obj[nm] = function () { __glProbe.drawTotal++; return orig.apply(this, arguments); };
+        }
+    }
+    hookDraws(g.WebGLRenderingContext && g.WebGLRenderingContext.prototype);
+    hookDraws(g.WebGL2RenderingContext && g.WebGL2RenderingContext.prototype);
+    // 包 getExtension：拦截 multi_draw 扩展对象并 hook 其 draw 方法
+    for (const proto of [g.WebGLRenderingContext && g.WebGLRenderingContext.prototype,
+        g.WebGL2RenderingContext && g.WebGL2RenderingContext.prototype]) {
+        if (!proto || proto.__benchGetExtHooked) continue;
+        proto.__benchGetExtHooked = true;
+        const origGetExt = proto.getExtension;
+        if (typeof origGetExt !== 'function') continue;
+        proto.getExtension = function () {
+            const ext = origGetExt.apply(this, arguments as any);
+            const name = arguments[0];
+            if (ext && typeof name === 'string' && /multi_draw|draw_instanced/.test(name)) {
+                for (const k of Object.keys(ext)) {
+                    if (typeof ext[k] === 'function' && /draw/i.test(k) && !ext['__bh_' + k]) {
+                        const orig = ext[k];
+                        ext['__bh_' + k] = true;
+                        ext[k] = function () { __glProbe.drawTotal++; return orig.apply(this, arguments); };
+                    }
+                }
+            }
+            return ext;
+        };
+    }
+    (function fc() { __glProbe.frameTotal++; requestAnimationFrame(fc); })();
+})();
 
 declare const BunnySim: any;
 declare const BoidsSim: any;
@@ -30,7 +75,9 @@ const BUNNY_IMGS = [
     'rabbitv3_neo', 'rabbitv3_sonic', 'rabbitv3_spidey', 'rabbitv3_stormtrooper',
     'rabbitv3_superman', 'rabbitv3_tron', 'rabbitv3_wolverine', 'rabbitv3_frankenstein'
 ];
-const FISH_IMGS = BUNNY_IMGS.slice(1, 6);
+const FISH_IMGS = [
+    'fish_1', 'fish_2', 'fish_3', 'fish_1', 'fish_2'
+];
 
 @ccclass('CocosBench')
 export class CocosBench extends Component {
@@ -46,14 +93,15 @@ export class CocosBench extends Component {
         this.H = 720;
         view.setDesignResolutionSize(this.W, this.H, 0); // 0=EXACT_FIT：可见区恒等于设计分辨率，逻辑坐标即 1280×720
         // 帧率上限 60（对齐 egret data-frame-rate=60）
-        (director.game as any).frameRate = 60;
+        game.frameRate = 60;
 
-        this.adapter = new CocosAdapter(this.node, this.W, this.H);
+        this.adapter = new CocosAdapter(this.makeHolder(), this.W, this.H);
         this.stats = new BenchStats();
         this.runner = new BenchRunner(this.adapter, this.stats);
         this.buildHud();
 
-        // 自动测试：?auto=1&variant=V1&count=10000（编排页 iframe 用，进入即跑固定采样）
+        // 自动测试：?auto=1&mode=fixed|ramp&variant=V1&count=10000（编排页 iframe 用）
+        // mode=ramp：承载力阶梯（autoRamp 出 cap + 逐档曲线），与 3D 水族馆/总控 RAMP_SCENES 口径一致。
         // 标记 __benchAutoStarted，防止 build.js 注入的 shim 再触发一次（双重触发）
         const q = new URLSearchParams(location.search);
         if (q.get('auto') === '1') {
@@ -64,7 +112,7 @@ export class CocosBench extends Component {
             const $c = document.querySelector('#ccnt') as HTMLInputElement;
             if ($v) { $v.value = variant; }
             if ($c) { $c.value = String(count); }
-            this.runVariant(variant, count, 'fixed');
+            this.runVariant(variant, count, q.get('mode') === 'ramp' ? 'ramp' : 'fixed');
         }
     }
 
@@ -76,9 +124,21 @@ export class CocosBench extends Component {
         this.updateLive(ts);
     }
 
+    /** 精灵容器：Canvas 下的独立节点。不能直接用 Canvas 当 root——
+     *  clearAll 会 removeAllChildren 把场景自带的 Camera 删掉，导致黑屏不渲染。 */
+    private makeHolder(): Node {
+        const old = this.node.getChildByName('BenchRoot');
+        if (old) return old;
+        const holder = new Node('BenchRoot');
+        holder.layer = 1 << 25; // UI_2D，与 Camera 可见层一致
+        this.node.addChild(holder);
+        return holder;
+    }
+
     private liveLastTs = 0;
     private liveFpsEma = 16.7;
     private liveBackend = '';
+    private _lastLive = 0;
     private updateLive(ts: number) {
         if (this.liveLastTs) {
             const d = Math.min(ts - this.liveLastTs, 100);
@@ -87,8 +147,8 @@ export class CocosBench extends Component {
         this.liveLastTs = ts;
         if (!this.liveEl) return;
         const now = performance.now();
-        if (now - (this as any)._lastLive > 400) {
-            (this as any)._lastLive = now;
+        if (now - this._lastLive > 400) {
+            this._lastLive = now;
             const dc = this.adapter.readDrawCalls ? this.adapter.readDrawCalls() : -1;
             this.liveEl.textContent =
                 '后端: ' + this.liveBackend + '\n' +
@@ -108,12 +168,73 @@ export class CocosBench extends Component {
                     count, bounds
                 });
             } else {
-                this.runner.rampRun({
-                    engine: 'cocos-creator-3.8.8', variant, backend: this.liveBackend,
-                    stepCount: 1000, stepMs: 2000, maxCount: 200000, bounds
-                });
+                this.runAutoRamp(variant);
             }
             this.outEl.textContent = '运行中…';
+        });
+    }
+
+    /**
+     * 承载力阶梯（2D 水族馆闭环）：逐档预热+采样，稳定=fps≥55 且 p95≤20ms，
+     * 掉帧档加倍预热重试，临界后 +500 细扫（口径 = sim-core bench-runner.autoRamp）。
+     * 组合结果（cap/levels/runtime 后端校验）经 exportJSON 写 __benchLastResult 供总控采集。
+     */
+    private runAutoRamp(variant: string) {
+        const requested = new URLSearchParams(location.search).get('backend');
+        const levels: any[] = [];
+        this.outEl.style.display = 'block';
+        const lines: string[] = ['== 承载力测试 [' + this.liveBackend + ' · ' + variant + '] =='];
+        this.outEl.textContent = lines.join('\n');
+        this.runner.autoRamp({
+            engine: 'cocos-creator-3.8.8', variant, backend: this.liveBackend,
+            counts: [2000, 5000, 10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000],
+            preWarmSec: 5, sampleSec: 6,
+            onLevel: (lv: any) => {
+                if (lv.phase === 'retry') {
+                    this.outEl.textContent = '档 ' + lv.count + ' 疑似抖动，加倍预热重测…';
+                    return;
+                }
+                if (lv.phase === 'done' && lv.json) {
+                    const j = lv.json;
+                    levels.push({
+                        count: lv.count, fps: j.fps, p50: j.p50, p95: j.p95, p99: j.p99,
+                        p1Low: j.p1Low, stdDev: j.stdDev, drawCallAvg: j.drawCallAvg, nodeCount: j.nodeCount,
+                        actualBackend: j.actualBackend, backendValid: j.backendValid,
+                        gpuVendor: j.gpuVendor, gpuRenderer: j.gpuRenderer,
+                        renderWidth: j.renderWidth, renderHeight: j.renderHeight, dpr: j.dpr,
+                        stable: lv.stable
+                    });
+                    lines.push('  ' + lv.count + ' 只: ' + j.fps + 'fps ' +
+                        (lv.stable ? '✓稳' : '✗掉帧') + ' | p95 ' + j.p95 + 'ms | dc ' + j.drawCallAvg);
+                    this.outEl.textContent = lines.join('\n');
+                }
+            },
+            onDone: (r: any) => {
+                // 聚合逐档真实后端：WebGPU 臂中途静默回退 WebGL 必须在此暴露
+                const acts: string[] = [];
+                levels.forEach((l) => {
+                    const b = l.actualBackend;
+                    if (b && acts.indexOf(b) < 0) acts.push(b);
+                });
+                const rt = acts.length === 1 ? acts[0] : this.liveBackend;
+                const rv = acts.length === 1 && rt === (requested || 'webgl');
+                const result = {
+                    meta: {
+                        engine: 'cocos-creator-3.8.8', variant,
+                        backend: rt, requestedBackend: requested || rt, backendValid: rv, mode: 'autoRamp'
+                    },
+                    cap: r.cap, jankAt: r.jankAt, capped: r.capped, invalidCurve: r.invalidCurve,
+                    thresholdAt: r.thresholdAt, fineStart: r.fineStart, fineStep: r.fineStep,
+                    levels
+                };
+                (window as any).__benchRampResult = result;
+                BenchRunner.exportJSON(result);
+                if (r.capped) lines.push('▶ ⚠ 最高档 ' + r.cap + ' 只仍未掉帧：承载力被天花板截断');
+                else lines.push('▶ 承载力: ' + r.cap + ' 只稳 ≥55fps' + (r.jankAt != null ? '（' + r.jankAt + ' 只掉帧）' : ''));
+                if (!rv) lines.push('⚠ 运行时后端与请求不符');
+                this.outEl.textContent = lines.join('\n');
+                this.liveEl.textContent = '自动测试完成，承载力 ' + r.cap + ' 只。';
+            }
         });
     }
 
@@ -125,8 +246,9 @@ export class CocosBench extends Component {
         const pending = names.length;
         let done = 0;
         const frames: SpriteFrame[] = [];
+        const dir = variant === 'boids' ? 'fish' : 'bench';
         names.forEach((n, i) => {
-            resources.load(`bench/${n}/spriteFrame`, SpriteFrame, (err: Error | null, sf: SpriteFrame) => {
+            resources.load(`${dir}/${n}/spriteFrame`, SpriteFrame, (err: Error | null, sf: SpriteFrame) => {
                 if (err) { console.error('资源缺失:', n, err); }
                 frames[i] = sf;
                 if (++done >= pending) {
@@ -153,6 +275,7 @@ export class CocosBench extends Component {
         // 不用 navigator.gpu 猜——renderMode 强制 WebGL 时 navigator.gpu 依然存在
         const dev: any = (director.root as any) ? (director.root as any).device : null;
         this.liveBackend = (dev && dev.gl) ? 'webgl' : 'webgpu';
+        this.adapter.actualBackend = this.liveBackend;
 
         const style = document.createElement('style');
         style.textContent =
@@ -191,7 +314,7 @@ export class CocosBench extends Component {
             '<option value="V1">Bunny V1 同纹理合批</option>' +
             '<option value="V2">Bunny V2 atlas多帧</option>' +
             '<option value="V3">Bunny V3 随机变换</option>' +
-            '<option value="V4">Bunny V4 不合批</option>' +
+            '<option value="V4">Bunny V4 12纹理压力</option>' +
             '<option value="boids">水族馆 2D Boids</option>' +
             '</select></div>' +
             '<div class="row"><span class="lbl">数量</span>' +
@@ -285,6 +408,22 @@ export class CocosBench extends Component {
     }
 }
 
+// 【运行时自动挂载】场景启动后把本组件挂到 Canvas —— 完全不依赖场景序列化里的脚本引用，
+// 避免 IDE 挂载/保存不落盘的问题。若场景里已手动挂载则跳过，防双重挂载。
+director.once(Director.EVENT_AFTER_SCENE_LAUNCH, () => {
+    try {
+        const scene = director.getScene();
+        if (!scene) return;
+        const canvas = scene.getChildByName('Canvas') || (scene.children.length ? scene.children[0] : null);
+        if (!canvas) { console.warn('[CocosBench] 场景无 Canvas 节点'); return; }
+        if (canvas.getComponent('CocosBench')) return; // 已挂载（场景里手动挂过）
+        canvas.addComponent(CocosBench);
+        console.log('[CocosBench] 已自动挂载到', canvas.name);
+    } catch (e) {
+        console.error('[CocosBench] 自动挂载失败:', e);
+    }
+});
+
 /** 适配器主体：标准 Sprite 节点路径 */
 class CocosAdapter {
     frames: SpriteFrame[] = [];
@@ -294,6 +433,7 @@ class CocosAdapter {
     private mode = 'bunny';
     private extra: { rotSpeed: number; phase: number }[] = [];
     private lastTick = 0;
+    actualBackend = 'unknown';
 
     constructor(private root: Node, private W: number, private H: number) { }
 
@@ -321,6 +461,7 @@ class CocosAdapter {
             : (this.variant === 'V1' || this.variant === 'V3') ? this.frames[0]
                 : this.frames[i % this.frames.length];
         const n = new Node();
+        n.layer = 1 << 25; // Layers.Enum.UI_2D：与 Canvas/Camera 一致，否则相机不渲染（默认层是 1<<30）
         const sp = n.addComponent(Sprite);
         sp.spriteFrame = frame;
         const ut = n.getComponent(UITransform)!;
@@ -362,7 +503,12 @@ class CocosAdapter {
             this.sim.update(dt);
             for (let i = 0; i < len; i++) {
                 nodes[i].setPosition(this.toX(list[i].x), this.toY(list[i].y), 0);
-                nodes[i].setRotationFromEuler(0, 0, -list[i].angle * 57.29577951);
+                // cocos y 向上：角度取反。鱼贴图朝左，朝右（cos>0）水平翻转
+                const cosA = Math.cos(list[i].angle);
+                const s = list[i].scale || 1;
+                nodes[i].setScale((cosA > 0 ? -s : s), s, 1);
+                const tilt = cosA > 0 ? list[i].angle : (list[i].angle - Math.PI);
+                nodes[i].setRotationFromEuler(0, 0, -tilt * 57.29577951);
             }
         } else {
             this.sim.update();
@@ -382,10 +528,33 @@ class CocosAdapter {
         }
     }
 
-    /** 已验证 API：gfx Device.numDrawCalls getter（device.ts L110） */
+    /**
+     * drawCall 采集：
+     *  - WebGPU 后端：device.numDrawCalls（WebGPU 命令缓冲有计数）
+     *  - WebGL 后端：模块顶层 __glProbe（引擎 numDrawCalls 恒 0 + multi_draw 扩展，见顶部注释）
+     */
     readDrawCalls(): number {
         const dev: any = director.root && director.root.device;
-        return dev ? dev.numDrawCalls : -1;
+        if (!dev) return -1;
+        if (dev.gl) {
+            const fd = __glProbe.frameTotal - __glProbe.lastFrame;
+            const dd = __glProbe.drawTotal - __glProbe.lastDraw;
+            __glProbe.lastFrame = __glProbe.frameTotal;
+            __glProbe.lastDraw = __glProbe.drawTotal;
+            return fd > 0 ? dd / fd : -1;
+        }
+        return dev.numDrawCalls; // WebGPU
+    }
+
+    readBenchMetrics(): any {
+        return {
+            actualBackend: this.actualBackend,
+            renderWidth: this.W,
+            renderHeight: this.H,
+            antialias: false,
+            workloadClass: this.variant === 'V4' ? 'finite-multi-texture-pressure' : 'standard',
+            textureCount: this.variant === 'V1' || this.variant === 'V3' ? 1 : this.variant === 'V2' ? 8 : 12,
+        };
     }
 
     nodeCount(): number { return this.nodes.length; }

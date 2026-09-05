@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "engine": "egret-selfdev-5.4.1",
+    "variant": "M3",
+    "backend": "webgl",
+    "mode": "fixed",
+    "count": 20
+  },
+  "nodeCount": 20,
+  "drawCallAvg": 31.9,
+  "drawCallMax": 32,
+  "drawCallSamples": 569,
+  "frames": 570,
+  "fps": 57,
+  "p50": 16.67,
+  "p95": 19.66,
+  "p99": 34.7,
+  "p1Low": 64.13,
+  "stdDev": 7.18,
+  "overBudgetPct": 43.9,
+  "jsHeapMB": 19,
+  "gpuVendor": "Google Inc. (NVIDIA)",
+  "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 SUPER (0x00002187) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+  "timestamp": 1788257556749,
+  "actualBackend": "webgl",
+  "backendValid": true,
+  "comparisonEligible": true
+}

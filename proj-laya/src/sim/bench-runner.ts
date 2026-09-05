@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * BenchRunner — 三引擎统一的基准流程驱动
  *
@@ -28,7 +27,7 @@
     V1: { textures: 1,    rotate: false, scale: false, desc: 'same texture, batched' },
     V2: { textures: 8,    rotate: false, scale: false, desc: 'atlas random frame' },
     V3: { textures: 1,    rotate: true,  scale: true,  desc: 'random transforms' },
-    V4: { textures: 9999, rotate: false, scale: false, desc: 'unbatched, unique texture each' }
+    V4: { textures: 12, rotate: false, scale: false, desc: 'finite multi-texture pressure' }
   };
 
   function BenchRunner(adapter, stats) {
@@ -63,6 +62,13 @@
       : null;
     this.stats.start(o.preWarmSec || 3, o.sampleSec || 10, function (json) {
       json.nodeCount = self.adapter.nodeCount();
+      if (self.adapter.readBenchMetrics) {
+        var metrics = self.adapter.readBenchMetrics();
+        for (var key in metrics) json[key] = metrics[key];
+      }
+      json.actualBackend = json.actualBackend || json.meta.backend;
+      json.backendValid = json.actualBackend === json.meta.backend;
+      json.comparisonEligible = json.backendValid;
       self._ramp = null;
       if (self.onReport) self.onReport(json);
     });
@@ -154,14 +160,15 @@
       ? [1000, 2000, 4000, 8000, 15000, 25000, 40000, 60000]
       : [2000, 5000, 10000, 20000, 40000, 70000, 110000, 160000, 220000, 300000]);
     var self = this;
-    var cap = 0, jankAt = null, idx = 0;
+    var cap = 0, jankAt = null, idx = 0, jankStreak = 0, invalidCurve = false;
+    var sawJank = false;
     var onLevel = o.onLevel || function () {};
     var onDone = o.onDone || function () {};
     this._autoStop = false;
 
     function step() {
       if (self._autoStop || idx >= COUNTS.length) {
-        onDone({ cap: cap, jankAt: jankAt, capped: cap >= COUNTS[COUNTS.length - 1] });
+        onDone({ cap: cap, jankAt: jankAt, capped: cap >= COUNTS[COUNTS.length - 1], invalidCurve: invalidCurve });
         return;
       }
       var n = COUNTS[idx];
@@ -171,18 +178,31 @@
         self.onReport = prevReport;
         var stable = json.fps >= 55;
         var jank = json.fps < 50;
-        if (stable) cap = n;
-        if (jank && jankAt == null) jankAt = n;
+        // 负载上升后不允许从真实掉帧档恢复稳定；这表示启动/GC/调度污染，整轮不能产出结论。
+        if (sawJank && stable) invalidCurve = true;
+        if (stable && !sawJank) cap = n;
+        if (jank) {
+          sawJank = true;
+          if (jankAt == null) jankAt = n;
+        }
         onLevel({ phase: 'done', count: n, index: idx, total: COUNTS.length, json: json, stable: stable });
         idx++;
-        if (jank) { onDone({ cap: cap, jankAt: jankAt, capped: false }); return; }
+        // 抗瞬时抖动：需连续 2 档 fps<50 才终止上探（单次 GC/着色器编译/系统调度不算数）；
+        // 若下一档恢复 ≥55，说明是假性掉帧，cap 会正常记到更高档
+        if (jank) {
+          jankStreak++;
+          if (jankStreak >= 2) { onDone({ cap: cap, jankAt: jankAt, capped: false, invalidCurve: invalidCurve }); return; }
+        } else {
+          jankStreak = 0;
+        }
         step();
       };
+      // 加长预热+采样窗口：单个短窗口噪声不再能翻档，提升跨次运行可复现性
       self.fixedRun({
         engine: o.engine || self.stats.meta.engine,
         variant: o.variant || self.stats.meta.variant,
         backend: o.backend || self.stats.meta.backend,
-        count: n, preWarmSec: 1.2, sampleSec: 2
+        count: n, preWarmSec: 2.5, sampleSec: 4
       });
     }
     step();

@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "engine": "cocos-creator-3.8.8",
+    "variant": "boids3d",
+    "backend": "webgl",
+    "mode": "fixed",
+    "count": 10000
+  },
+  "nodeCount": 10000,
+  "drawCallAvg": 83.7,
+  "drawCallMax": 117,
+  "drawCallSamples": 383,
+  "frames": 383,
+  "fps": 38.3,
+  "p50": 33.26,
+  "p95": 33.46,
+  "p99": 33.61,
+  "p1Low": 33.62,
+  "stdDev": 8.27,
+  "overBudgetPct": 67.6,
+  "jsHeapMB": 119,
+  "gpuVendor": "Google Inc. (NVIDIA)",
+  "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 SUPER (0x00002187) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+  "timestamp": 1788319872234,
+  "actualBackend": "webgl",
+  "requestedBackend": "webgl",
+  "backendValid": true,
+  "cpuSimMs": 0.02,
+  "fishCount": 10000,
+  "comparisonEligible": true
+}

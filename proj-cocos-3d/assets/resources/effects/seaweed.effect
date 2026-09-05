@@ -1,0 +1,95 @@
+CCEffect %{
+  techniques:
+  - name: seaweed
+    passes:
+    - vert: seaweed-vs:vert
+      frag: seaweed-fs:frag
+      cullMode: none
+      properties:
+        mainTexture: { value: grey }
+        mainColor: { value: [1, 1, 1, 1], linear: true }
+        ambientColor: { value: [0.22, 0.25, 0.39, 1], linear: true }
+        lightWorldPos: { value: [0, 60, 0, 1] }
+        waveTime: { value: 0, target: waveTimeParam.x }
+}%
+
+CCProgram seaweed-vs %{
+  precision highp float;
+  #include <legacy/input-standard>
+  #include <builtin/uniforms/cc-global>
+  #include <legacy/decode-base>
+  #include <legacy/local-batch>
+
+  uniform Constant {
+    vec4 mainColor;
+    vec4 ambientColor;
+    vec4 lightWorldPos;
+    vec4 waveTimeParam;
+  };
+
+  out vec2 v_uv;
+  out vec3 v_normal;
+  out vec3 v_surfaceToLight;
+  out vec3 v_surfaceToView;
+
+  vec4 vert () {
+    StandardVertInput In;
+    CCVertInput(In);
+
+    mat4 matWorld, matWorldIT;
+    CCGetWorldMatrixFull(matWorld, matWorldIT);
+    vec3 worldOrigin = matWorld[3].xyz;
+    vec3 toCamera = normalize(cc_cameraPos.xyz - worldOrigin);
+    vec3 yAxis = vec3(0.0, 1.0, 0.0);
+    vec3 xAxis = normalize(cross(yAxis, toCamera));
+    vec3 zAxis = normalize(cross(xAxis, yAxis));
+    mat4 billboard = mat4(
+      vec4(xAxis, 0.0),
+      vec4(yAxis, 0.0),
+      vec4(zAxis, 0.0),
+      vec4(worldOrigin, 1.0)
+    );
+
+    vec4 position = In.position;
+    position.x += sin(waveTimeParam.x * 0.5) * pow(position.y * 0.07, 2.0);
+    vec4 world = billboard * position;
+    v_uv = a_texCoord;
+    v_normal = normalize(mat3(billboard) * In.normal);
+    v_surfaceToLight = lightWorldPos.xyz - world.xyz;
+    v_surfaceToView = cc_cameraPos.xyz - world.xyz;
+    return cc_matProj * cc_matView * world;
+  }
+}%
+
+CCProgram seaweed-fs %{
+  precision highp float;
+  #include <legacy/output-standard>
+  #include <common/color/gamma>
+
+  uniform sampler2D mainTexture;
+  uniform Constant {
+    vec4 mainColor;
+    vec4 ambientColor;
+    vec4 lightWorldPos;
+    vec4 waveTimeParam;
+  };
+
+  in vec2 v_uv;
+  in vec3 v_normal;
+  in vec3 v_surfaceToLight;
+  in vec3 v_surfaceToView;
+
+  vec4 frag () {
+    vec4 diffuseColor = texture(mainTexture, v_uv);
+    if (diffuseColor.a < 0.3) discard;
+    diffuseColor.rgb = SRGBToLinear(diffuseColor.rgb);
+    vec3 normal = normalize(v_normal);
+    vec3 surfaceToLight = normalize(v_surfaceToLight);
+    vec3 surfaceToView = normalize(v_surfaceToView);
+    vec3 halfVector = normalize(surfaceToLight + surfaceToView);
+    float ndl = max(dot(normal, surfaceToLight), 0.0);
+    float spec = ndl > 0.0 ? pow(max(dot(normal, halfVector), 0.0), 50.0) : 0.0;
+    vec3 color = diffuseColor.rgb * (ndl + ambientColor.rgb) + vec3(spec);
+    return CCFragOutput(vec4(color, diffuseColor.a * mainColor.a));
+  }
+}%

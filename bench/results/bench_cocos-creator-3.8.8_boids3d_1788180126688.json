@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "engine": "cocos-creator-3.8.8",
+    "variant": "boids3d",
+    "backend": "webgpu",
+    "mode": "autoRamp"
+  },
+  "cap": 0,
+  "jankAt": 50,
+  "capped": false,
+  "levels": [
+    {
+      "count": 50,
+      "fps": 35.9,
+      "p50": 26.62,
+      "p95": 33.5,
+      "p99": 37.88,
+      "p1Low": 37.88,
+      "stdDev": 4.9,
+      "drawCallAvg": 141.4,
+      "stable": false
+    }
+  ]
+}

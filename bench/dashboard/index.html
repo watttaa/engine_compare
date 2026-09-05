@@ -14,10 +14,14 @@
   td.l{text-align:left}
   tr.best td{background:#1d3a2a}
   .note{color:#888;font-size:12px}
+  .row{margin:8px 0}
 </style>
 </head>
 <body>
-<h1>三引擎基准对比（BunnyMark / 水族馆 2D）</h1>
+<h1>三引擎基准对比（BunnyMark / 水族馆 2D / 水族馆 3D）</h1>
+<div class="row">
+  <a href="boids3d.html" target="_blank">▶ 打开 boids3d 压测壳页（1280×720）</a>
+</div>
 <div id="drop">把各引擎导出的 bench_*.json 拖进来（可多选）</div>
 <div id="view"></div>
 <p class="note">对比规则：同一 variant 下，p50 最小（帧时间最短）的行标绿。ramp 模式看 maxStableCount。</p>
@@ -53,9 +57,9 @@ function addFiles(files) {
 }
 
 function render() {
-  var html = '<h2>全部结果</h2><table><tr>' +
-    '<th>引擎</th><th>变体</th><th>模式</th><th>数量</th><th>FPS</th>' +
-    '<th>p50</th><th>p95</th><th>p99</th><th>超16.7ms%</th>' +
+  var html = '<h2>全部结果（fixed）</h2><table><tr>' +
+    '<th>引擎</th><th>变体</th><th>后端</th><th>模式</th><th>数量</th><th>FPS</th>' +
+    '<th>p50</th><th>p95</th><th>p99</th>' +
     '<th>DrawCall</th><th>堆内存MB</th><th>maxStable</th></tr>';
 
   // 按 variant 分组找最优 p50
@@ -71,16 +75,64 @@ function render() {
     html += '<tr' + (isBest ? ' class="best"' : '') + '>' +
       '<td class="l">' + m.engine + '</td>' +
       '<td class="l">' + m.variant + '</td>' +
+      '<td class="l">' + (m.backend || '-') + '</td>' +
       '<td>' + m.mode + '</td>' +
-      '<td>' + (j.nodeCount != null ? j.nodeCount : '-') + '</td>' +
+      '<td>' + (j.nodeCount != null ? j.nodeCount : (m.count != null ? m.count : '-')) + '</td>' +
       '<td>' + j.fps + '</td>' +
       '<td>' + j.p50 + '</td><td>' + j.p95 + '</td><td>' + j.p99 + '</td>' +
-      '<td>' + j.overBudgetPct + '</td>' +
-      '<td>' + (j.drawCalls != null ? j.drawCalls : '-') + '</td>' +
+      '<td>' + (j.drawCalls != null ? j.drawCalls : (j.drawCallAvg != null ? j.drawCallAvg : '-')) + '</td>' +
       '<td>' + (j.jsHeapMB != null ? j.jsHeapMB : '-') + '</td>' +
       '<td>' + (j.maxStableCount != null ? j.maxStableCount : '-') + '</td></tr>';
   });
   html += '</table>';
+
+  // boids3d 阶梯对比表（autoRamp JSON：meta.engine × levels[]）
+  var ramps = {};
+  results.forEach(function (j) {
+    if (j.meta && j.meta.mode === 'autoRamp' && j.levels && j.levels.length) {
+      var key = (j.meta.variant || 'boids3d') + '|' + (j.meta.backend || 'webgl');
+      if (!ramps[key]) ramps[key] = [];
+      ramps[key].push(j);
+    }
+  });
+  Object.keys(ramps).sort().forEach(function (key) {
+    var list = ramps[key];
+    var variant = key.split('|')[0], backend = key.split('|')[1];
+    // 列 = 引擎（engine + backend），行 = count
+    var cols = [], byCount = {};
+    list.forEach(function (j) {
+      var col = j.meta.engine + (j.meta.backend ? ' (' + j.meta.backend + ')' : '');
+      if (cols.indexOf(col) < 0) cols.push(col);
+      j.levels.forEach(function (l) {
+        byCount[l.count] = byCount[l.count] || {};
+        byCount[l.count][col] = l;
+      });
+    });
+    html += '<h2>阶梯对比：' + variant + ' · ' + backend + '（fps，⚠=掉帧档）</h2><table><tr><th>鱼数</th>';
+    cols.forEach(function (c) { html += '<th>' + c + '</th>'; });
+    html += '</tr>';
+    Object.keys(byCount).map(Number).sort(function (a, b) { return a - b; }).forEach(function (count) {
+      html += '<tr><td class="l">' + count + '</td>';
+      cols.forEach(function (c) {
+        var l = byCount[count][c];
+        if (!l) { html += '<td>-</td>'; return; }
+        html += '<td' + (l.stable ? '' : ' style="background:#4a1d1d"') + '>' +
+          (l.fps != null ? l.fps : '-') + (l.stable ? '' : ' ⚠') + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</table>';
+    // 容量表：maxStable（cap）与首个掉帧档
+    html += '<h2>容量：' + variant + ' · ' + backend + '</h2><table><tr><th>引擎</th><th>maxStable（cap）</th><th>首个掉帧档</th><th>GPU</th></tr>';
+    list.forEach(function (j) {
+      var gpu = (j.meta.gpuVendor || '-') + ' / ' + (j.meta.gpuRenderer || '-');
+      html += '<tr><td class="l">' + j.meta.engine + (j.meta.backend ? ' (' + j.meta.backend + ')' : '') + '</td>' +
+        '<td>' + (j.cap != null ? j.cap : '-') + '</td>' +
+        '<td>' + (j.jankAt != null ? j.jankAt : '-') + '</td>' +
+        '<td class="l" style="font-size:11px">' + gpu + '</td></tr>';
+    });
+    html += '</table>';
+  });
 
   // 透视表：variant × engine 的 p50
   var engines = {}, variants = {};

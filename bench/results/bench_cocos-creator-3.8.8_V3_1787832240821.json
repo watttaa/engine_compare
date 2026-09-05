@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "engine": "cocos-creator-3.8.8",
+    "variant": "V3",
+    "backend": "webgpu",
+    "mode": "fixed",
+    "count": 10000
+  },
+  "nodeCount": 10000,
+  "drawCallAvg": 10,
+  "drawCallMax": 10,
+  "drawCallSamples": 332,
+  "frames": 332,
+  "fps": 33.1,
+  "p50": 33.26,
+  "p95": 34,
+  "p99": 35.81,
+  "overBudgetPct": 93.7,
+  "jsHeapMB": 91,
+  "gpuVendor": "Google Inc. (NVIDIA)",
+  "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 SUPER (0x00002187) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
+  "timestamp": 1787832240821
+}

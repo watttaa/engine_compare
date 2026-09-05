@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Egret(自研 5.4.1) 帧序列动画 Benchmark</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#1a1a2e}
+  .egret-player{width:100%;height:100%}
+</style>
+</head>
+<body>
+<div class="egret-player"
+     data-entry-class="MCBenchMain"
+     data-orientation="auto"
+     data-scale-mode="fixedSize"
+     data-frame-rate="60"
+     data-content-width="1280"
+     data-content-height="720"
+     data-show-fps="false"
+     data-show-log="false"></div>
+
+<script src="../sim/stats.js"></script>
+<script src="../sim/bench-runner.js"></script>
+<script src="../sim/mc-compare.js"></script>
+<!-- pathfinding.js（PF）：游戏同款 A* 库 -->
+<script src="pathfinding.js"></script>
+<script src="mc-sim.js"></script>
+
+<!-- WebGL draw probe -->
+<script>
+  (function(){
+    var p1=window.WebGLRenderingContext&&WebGLRenderingContext.prototype;
+    var p2=window.WebGL2RenderingContext&&WebGL2RenderingContext.prototype;
+    window.__webglProbe={drawTotal:0,frameTotal:0,lastDraw:0,lastFrame:0};
+    function hook(p){if(!p||p.__benchDrawHooked)return;p.__benchDrawHooked=true;
+      var de=p.drawElements,da=p.drawArrays;
+      p.drawElements=function(){window.__webglProbe.drawTotal++;return de.apply(this,arguments);};
+      p.drawArrays=function(){window.__webglProbe.drawTotal++;return da.apply(this,arguments);};}
+    hook(p1);hook(p2);
+    (function fc(){window.__webglProbe.frameTotal++;requestAnimationFrame(fc);})();
+  })();
+</script>
+
+<script src="egret-lib/egret.js"></script>
+<script src="egret-lib/egret.web.js"></script>
+<!-- game 模块：MovieClip / MovieClipDataFactory 在此 -->
+<script src="egret-lib/game.js"></script>
+<script src="main.js"></script>
+<script>
+  (async function(){
+    var forced=new URLSearchParams(location.search).get('backend');
+    var backend='webgl';
+    if(forced==='webgpu'){
+      try{
+        var mod=await import('../egret-webgpu/../opt-www/webgpu-dist/egret-webgpu-boot.js');
+        var r=await mod.installWebGPUBackendNative({});
+        if(r.backend==='webgpu'&&r.renderer){backend='webgpu';window.__webgpu=r;}
+      }catch(e){console.warn('[mc-bench] WebGPU 回退 WebGL:',e);}
+    }
+    window.__effectiveBackend=backend;
+    egret.runEgret({
+      renderMode:backend==='webgpu'?'webgpu':'webgl',
+      audioType:0,
+      calculateCanvasScaleFactor:function(){return window.devicePixelRatio||1;}
+    });
+  })();
+</script>
+</body>
+</html>

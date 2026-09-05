@@ -201,20 +201,28 @@ class LayaAdapter {
     }
 
     /**
-     * 已验证 API（源码核实）：
-     *  - Laya 2D 路径只记 CT_2DDrawCall（WebGLRenderContext2D.ts:62），CT_DrawCall 仅 3D 路径记录
-     *    （GLRenderDrawContext.ts:146）→ 2D 测试读 CT_DrawCall 恒为 0，必须读 CT_2DDrawCall
-     *  - CT_2DDrawCall 语义 = 合批后的渲染元素数（≈实际 drawcall 数，引擎官方口径）
-     *  - 统计窗口：endFrameLogic 每 1 秒求均值（StatisticsContext.ts:336-338）
+     * DrawCall 采集：WebGL API hook（window.__layaGlProbe）
+     *  - build.js 在 Laya 产物 index.html 注入探针（同 Cocos 的 __ccGlProbe 方案，口径一致）
+     *  - 探针 hook WebGL(2)RenderingContext.prototype 的 draw* 方法 + getExtension 包装
+     *  - 每帧增量 = drawTotal 差值 / frameTotal 差值（窗口均值，同 Egret/Cocos 口径）
+     *  - WebGPU 后端不走 WebGL 路径，probe 无效，回落 CT_2DDrawCall（合批后元素数，引擎官方口径）
      */
     readDrawCalls(): number {
+        const P = (globalThis as any).__layaGlProbe;
+        if (P) {
+            const fd = P.frameTotal - P.lastFrame;
+            const dd = P.drawTotal - P.lastDraw;
+            P.lastFrame = P.frameTotal;
+            P.lastDraw = P.drawTotal;
+            // fd>0 且 dd>0 表示 WebGL 路径有实际 draw，优先使用
+            if (fd > 0 && dd > 0) return dd / fd;
+        }
+        // WebGPU 后端或 probe 未注入：回落引擎计数器（CT_2DDrawCall）
         const g: any = globalThis as any;
         const statEl = g.StatElement || (g.Laya && g.Laya.StatElement);
-        if (g.LayaGL && g.LayaGL.statAgent && statEl) {
-            // 2D 场景读 CT_2DDrawCall；若做 3D 再加 CT_DrawCall
+        if (g.LayaGL && g.LayaGL.statAgent && statEl != null) {
             const dc2d = g.LayaGL.statAgent.getElementData(statEl.CT_2DDrawCall);
-            const dcAll = g.LayaGL.statAgent.getElementData(statEl.CT_DrawCall);
-            return dc2d + dcAll; // 2D/3D 混合场景两者相加；纯 2D 时 dcAll=0
+            return dc2d >= 0 ? dc2d : -1;
         }
         return -1;
     }

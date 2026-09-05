@@ -8,6 +8,18 @@ proj-laya/local/
 proj-cocos/build/
 proj-cocos/temp/
 proj-cocos/library/
+proj-cocos-3d/build/
+proj-cocos-3d/temp/
+proj-cocos-3d/library/
+laya-proj-3d/bin/
+laya-proj-3d/library/
+laya-proj-3d/local/
+proj_cocos_skel/build/
+proj_cocos_skel/temp/
+proj_cocos_skel/library/
+proj-laya-skel/bin/
+proj-laya-skel/library/
+proj-laya-skel/local/
 
 # 大型参考源码（本地保留，不进仓库；CI 只需 5.4.1/build/egret/）
 cocos-engine/
@@ -15,6 +27,19 @@ layaair/
 aquarium/
 bunny-mark/
 openspec/
+webglsamples.github.io/
+aquarium-intel/
+aquarium-webgl2-esm/
+aquarium-jungdu/
+
+# 微信小游戏对照工程（独立仓库管理，含 1.7GB 引擎源码拷贝）
+engine_minigame/
+
+# 个人资料包
+learning.zip
+
+# 运行时依赖（本仓库无 npm 依赖）
+node_modules/
 
 # egret-selfdev：仅保留 5.4.1/build/egret/ 引擎库，其余为参考源码
 egret-selfdev/*

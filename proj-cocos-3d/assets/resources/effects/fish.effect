@@ -1,0 +1,260 @@
+// Copyright (c) 2024
+// 鱼写实渲染：Blinn-Phong + 法线贴图 + 高光遮罩（点光源 lightWorldPos）
+// technique 0 (opaque)：道具/场景，走节点变换（cc_matWorld）
+// technique 1 (fish)：鱼，shader 内构建朝向矩阵 + 尾巴弯曲（节点恒等变换，静态 mesh）
+// 注意：VS/FS 的 uniform Constant 块成员与顺序必须完全一致（Cocos 按 properties 顺序分配偏移）
+
+CCEffect %{
+  techniques:
+  - name: opaque
+    passes:
+    - vert: prop-vs:vert
+      frag: fish-fs:frag
+      cullMode: back
+      properties:
+        mainTexture:   { value: grey }
+        mainColor:     { value: [1, 1, 1, 1], linear: true }
+        normalMap:     { value: normal }
+        reflectionMap: { value: grey }
+        ambientColor:  { value: [0.22, 0.25, 0.39, 1], linear: true }
+        specularColor: { value: [1, 1, 1, 1], linear: true }
+        shininess:     { value: 50, target: shininessParam.x }
+        useReflection: { value: 0, target: useReflectionParam.x }
+        debugMode:     { value: 0, target: debugModeParam.x }
+        lightWorldPos: { value: [0, 0, 0, 1] }
+        worldPosition: { value: [0, 0, 0, 1] }
+        nextPosition:  { value: [0, 0, 0, 0] }
+        fishTail:      { value: [10, 1, 2, 0] }
+        simulationTime: { value: [0, 0, 0, 0] }
+  - name: fish
+    passes:
+    - vert: fish-vs2:vert
+      frag: fish-fs:frag
+      cullMode: back
+      properties:
+        mainTexture:   { value: grey }
+        mainColor:     { value: [1, 1, 1, 1], linear: true }
+        normalMap:     { value: normal }
+        reflectionMap: { value: grey }
+        ambientColor:  { value: [0.218, 0.502, 0.706, 1], linear: true }
+        specularColor: { value: [0.3, 0.3, 0.3, 1], linear: true }
+        shininess:     { value: 5, target: shininessParam.x }
+        useReflection: { value: 0, target: useReflectionParam.x }
+        debugMode:     { value: 0, target: debugModeParam.x }
+        lightWorldPos: { value: [0, 0, 0, 1] }
+        worldPosition: { value: [0, 0, 0, 1] }
+        nextPosition:  { value: [0, 0, 0, 0] }
+        fishTail:      { value: [10, 1, 2, 0] }
+        simulationTime: { value: [0, 0, 0, 0] }
+}%
+
+CCProgram prop-vs %{
+  precision highp float;
+  #include <legacy/input-standard>
+  #include <builtin/uniforms/cc-global>
+  #include <legacy/decode-base>
+  #include <legacy/local-batch>
+
+  out vec3 v_normal;
+  out vec3 v_tangent;
+  out vec3 v_binormal;
+  out vec2 v_uv;
+  out vec3 v_worldPos;
+
+  vec4 vert () {
+    StandardVertInput In;
+    CCVertInput(In);
+
+    mat4 matWorld, matWorldIT;
+    CCGetWorldMatrixFull(matWorld, matWorldIT);
+
+    vec4 world = matWorld * In.position;
+    v_worldPos = world.xyz;
+    v_normal = normalize((matWorldIT * vec4(In.normal, 0.0)).xyz);
+    v_tangent = normalize((matWorld * vec4(In.tangent.xyz, 0.0)).xyz);
+    v_binormal = cross(v_normal, v_tangent) * In.tangent.w;
+    v_uv = a_texCoord;
+
+    return cc_matProj * cc_matView * world;
+  }
+}%
+
+CCProgram fish-vs2 %{
+  precision highp float;
+  #include <legacy/decode-base>
+  #include <builtin/uniforms/cc-global>
+
+  uniform Constant {
+    vec4 mainColor;
+    vec4 ambientColor;
+    vec4 specularColor;
+    vec4 shininessParam;
+    vec4 useReflectionParam;
+    vec4 debugModeParam;
+    vec4 lightWorldPos;
+    vec4 worldPosition;   // xyz=鱼位置, w=scale（非实例化回退）
+    vec4 nextPosition;    // xyz=下一位置(朝向), w=尾巴相位 time（非实例化回退）
+    vec4 fishTail;        // x=fishLength, y=fishWaveLength, z=fishBendAmount
+    vec4 simulationTime;
+  };
+
+  #if USE_INSTANCING
+    in vec4 a_fishMotion;   // x=phase, y=speed, z=xRadius, w=yRadius
+    in vec4 a_fishMotion2;  // x=zRadius, y=height, z=scale, w=tailSpeed
+  #endif
+
+  out vec3 v_normal;
+  out vec3 v_tangent;
+  out vec3 v_binormal;
+  out vec2 v_uv;
+  out vec3 v_worldPos;
+
+  vec4 vert () {
+    StandardVertInput In;
+    In.position = vec4(a_position, 1.0);
+    In.normal = a_normal;
+    In.tangent = a_tangent;
+
+    #if USE_INSTANCING
+      vec4 motion = a_fishMotion;
+      vec4 motion2 = a_fishMotion2;
+      float fishClock = simulationTime.x * 0.124 + motion.x * 0.52;
+      float speedClock = fishClock * motion.y;
+      float xClock = speedClock;
+      float yClock = speedClock * 0.556;
+      float zClock = speedClock;
+      vec3 fishPos = vec3(
+        sin(xClock) * motion.z,
+        sin(yClock) * motion.w + 25.0 + motion2.y,
+        cos(zClock) * motion2.x
+      );
+      vec3 fishNextPos = vec3(
+        sin(xClock - 0.04) * motion.z,
+        sin(yClock - 0.01) * motion.w + 25.0 + motion2.y,
+        cos(zClock - 0.04) * motion2.x
+      );
+      vec4 fishWorld = vec4(fishPos, motion2.z);
+      vec4 fishNext = vec4(fishNextPos, (simulationTime.x + motion.x) * motion2.w * motion.y);
+    #else
+      vec4 fishWorld = worldPosition;
+      vec4 fishNext = nextPosition;
+    #endif
+
+    // 照原版 fishVertexShader：朝向矩阵在 shader 内构建（节点恒等变换）
+    vec3 vz = normalize(fishWorld.xyz - fishNext.xyz);
+    vec3 vx = normalize(cross(vec3(0.0, 1.0, 0.0), vz));
+    vec3 vy = cross(vz, vx);
+    mat4 orientMat = mat4(
+      vec4(vx, 0.0),
+      vec4(vy, 0.0),
+      vec4(vz, 0.0),
+      vec4(fishWorld.xyz, 1.0)
+    );
+    float scale = fishWorld.w;
+    mat4 scaleMat = mat4(
+      vec4(scale, 0.0, 0.0, 0.0),
+      vec4(0.0, scale, 0.0, 0.0),
+      vec4(0.0, 0.0, scale, 0.0),
+      vec4(0.0, 0.0, 0.0, 1.0)
+    );
+    mat4 world = orientMat * scaleMat;
+
+    // 尾巴弯曲（照原版 shader：offset = mult^2 * sin(time + mult*waveLength) * bendAmount）
+    float mult = In.position.z > 0.0
+      ? (In.position.z / fishTail.x)
+      : (-In.position.z / fishTail.x * 2.0);
+    float s = sin(fishNext.w + mult * fishTail.y);
+    float offset = mult * mult * s * fishTail.z;
+    vec4 bent = In.position + vec4(offset, 0.0, 0.0, 0.0);
+
+    vec4 worldPos = world * bent;
+    v_worldPos = worldPos.xyz;
+
+    // 法线/切线用 orientMat（纯旋转，忽略均匀缩放），照原版 worldInverseTranspose≈world
+    mat3 normalMat = mat3(orientMat);
+    v_normal = normalize(normalMat * In.normal);
+    v_tangent = normalize(normalMat * In.tangent.xyz);
+    v_binormal = cross(v_normal, v_tangent) * In.tangent.w;
+    v_uv = a_texCoord;
+
+    return cc_matProj * cc_matView * worldPos;
+  }
+}%
+
+CCProgram fish-fs %{
+  precision highp float;
+  #include <legacy/output-standard>
+  #include <builtin/uniforms/cc-global>
+  #include <common/color/gamma>
+
+  in vec3 v_normal;
+  in vec3 v_tangent;
+  in vec3 v_binormal;
+  in vec2 v_uv;
+  in vec3 v_worldPos;
+
+  uniform sampler2D mainTexture;
+  uniform sampler2D normalMap;
+  uniform sampler2D reflectionMap;
+
+  uniform Constant {
+    vec4 mainColor;
+    vec4 ambientColor;
+    vec4 specularColor;
+    vec4 shininessParam;
+    vec4 useReflectionParam;
+    vec4 debugModeParam;
+    vec4 lightWorldPos;
+    vec4 worldPosition;
+    vec4 nextPosition;
+    vec4 fishTail;
+    vec4 simulationTime;
+  };
+
+  vec4 lit(float l, float h, float m) {
+    return vec4(1.0, max(l, 0.0), (l > 0.0) ? pow(max(0.0, h), m) : 0.0, 1.0);
+  }
+
+  vec4 frag () {
+    // 点光源：surfaceToLight = normalize(lightWorldPos - worldPos)
+    vec3 surfaceToLight = normalize(lightWorldPos.xyz - v_worldPos);
+    vec3 surfaceToView = normalize(cc_cameraPos.xyz - v_worldPos);
+    vec3 halfVector = normalize(surfaceToLight + surfaceToView);
+
+    // 切线法线：法线贴图 -0.5 归一化；normalMap 鱼加 z 偏置，reflection 鱼不加
+    vec4 normalSpec = texture(normalMap, v_uv);
+    vec3 tangentNormal = normalSpec.xyz - vec3(0.5);
+    if (useReflectionParam.x < 0.5) {
+      tangentNormal = normalize(tangentNormal + vec3(0.0, 0.0, 2.0));
+    }
+    mat3 tangentToWorld = mat3(v_tangent, v_binormal, v_normal);
+    vec3 normal = normalize(tangentToWorld * tangentNormal);
+    if (debugModeParam.x > 0.5) normal = normalize(v_normal);
+
+    float ndl = max(dot(normal, surfaceToLight), 0.0);
+    float ndh = max(dot(normal, halfVector), 0.0);
+    float spec = ndl > 0.0 ? pow(ndh, shininessParam.x) : 0.0;
+
+    // sRGB 贴图转线性（Cocos 线性空间渲染，输出统一转回 sRGB）
+    vec4 diffuseColor = texture(mainTexture, v_uv);
+    diffuseColor.rgb = SRGBToLinear(diffuseColor.rgb);
+
+    vec4 o = mainColor;
+    if (debugModeParam.x > 1.5) {
+      o.rgb = diffuseColor.rgb;
+    } else {
+      o.rgb = diffuseColor.rgb * (ndl + ambientColor.rgb)
+            + specularColor.rgb * spec * normalSpec.a;
+    }
+
+    // 反射贴图（RM）：原版 fishReflectionShader 用 reflection.r 混合天空色
+    if (useReflectionParam.x > 0.5) {
+      vec4 refl = texture(reflectionMap, v_uv);
+      vec3 skyColor = vec3(0.10, 0.24, 0.34);
+      o.rgb = mix(skyColor, o.rgb, 1.0 - refl.r);
+    }
+
+    o.a = diffuseColor.a * mainColor.a;
+    return CCFragOutput(o);
+  }
+}%

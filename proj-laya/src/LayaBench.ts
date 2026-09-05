@@ -18,8 +18,11 @@ const BUNNY_IMGS = [
     'rabbitv3_neo.png', 'rabbitv3_sonic.png', 'rabbitv3_spidey.png', 'rabbitv3_stormtrooper.png',
     'rabbitv3_superman.png', 'rabbitv3_tron.png', 'rabbitv3_wolverine.png', 'rabbitv3_frankenstein.png'
 ];
-const FISH_IMGS = BUNNY_IMGS.slice(1, 6);
+const FISH_IMGS = [
+    'fish_1.png', 'fish_2.png', 'fish_3.png', 'fish_1.png', 'fish_2.png'
+];
 const RES_PREFIX = 'resources/bench/';
+const FISH_PREFIX = 'resources/fish/';
 
 // 实时读数状态（buildHud 与 updateLive 共享）
 let liveEl: HTMLElement | null = null;
@@ -27,10 +30,26 @@ let liveBackend = '';
 let liveLastTs = 0;
 let liveFpsEma = 16.7;
 
+// 公平性说明：V2/V4 多纹理场景一律测引擎原生跨纹理批处理能力，不做任何手动图集干预
+// （与 Egret/Cocos 测法一致）。Laya 此 build 的 WebGPU render-to-texture 仅在引擎帧渲染
+// encoder 内有效，无法从 app 层合图；为保证两后端对等，WebGL 也不再手动合图。
+
 export class LayaBench {
     static start(): void {
         const g: any = globalThis as any;
         const Laya = g.Laya;
+
+        // init config 存入 window，供帧循环后端检测使用
+        try {
+            const cfgEl = document.querySelector('script[type="text/javascript"][src*="index.js"]');
+            // Laya 3.4 index.js 在 Laya.init 之前把 config 对象暴露在 Laya.Config 或 _config
+            // 此处保留 config 解析：直接从 Laya.Config 读取
+            if (g.Laya && g.Laya.Config) {
+                g.__layaInitConfig = {
+                    webgpu: !!(g.Laya.Config.enableWebGPU ?? g.Laya.Config.webgpu ?? false)
+                };
+            }
+        } catch (_) {}
 
         // 【公平性·SPEC 0】固定舞台逻辑尺寸 1280×720，三引擎统一（对齐 egret fixedSize）
         Laya.stage.setScreenSize(1280, 720);
@@ -44,20 +63,78 @@ export class LayaBench {
         const stats = new (g as any).BenchStats();
         const runner = new (g as any).BenchRunner(adapter, stats);
 
-        // 后端探测：navigator.gpu 可用 && 项目开 webgpu → 跑 webgpu，否则 webgl
-        const backend = (typeof navigator !== 'undefined' && (navigator as any).gpu) ? 'webgpu' : 'webgl';
+        const renderEngine = g.LayaGL && g.LayaGL.renderEngine;
+        // ---- 全面诊断：把 renderEngine 状态暴露给 window，便于 DevTools 观察 ----
+        try {
+            const diag: any = {
+                ctorName: renderEngine ? renderEngine.constructor.name : 'null',
+                ctorStr: renderEngine ? Object.prototype.toString.call(renderEngine) : '',
+                hasGPUDevice: typeof (globalThis as any).GPUDevice !== 'undefined',
+                gpuAvailable: !!(globalThis as any).navigator?.gpu,
+                keys: renderEngine ? Object.keys(renderEngine).slice(0, 30) : [],
+            };
+            if (renderEngine) {
+                // 尝试常见字段
+                for (const k of ['_device','device','_nativeDevice','_gpuDevice','_wgDevice','gpuDevice',
+                    '_context','context','_gl','gl','_renderContext','renderContext',
+                    '__gpu__','_webgpu','webgpu']) {
+                    if (renderEngine[k] !== undefined) diag['field_' + k] = String(renderEngine[k]).slice(0, 80);
+                }
+            }
+            (globalThis as any).__layaDiag = diag;
+            console.log('[LayaBench] WebGPU diag:', JSON.stringify(diag).slice(0, 400));
+        } catch (_) {}
+
+        // 同 readBenchMetrics 多策略探针，确保 backend 与 readBenchMetrics 一致
+        // NOTE：此时 renderEngine 可能为 null（WebGPU 异步初始化中）
+        // 实际后端由帧循环延迟检测后写入 adapter._resolvedBackend
+        let backend = 'pending';
+        (globalThis as any).__layaBackend = backend;
+        (globalThis as any).__layaEngineCtorName = renderEngine ? renderEngine.constructor.name : 'null';
 
         LayaBench.buildHud(Laya, runner, adapter, backend);
 
         // 帧循环入口：与 egret/cocos 适配器保持同一相对位置
+        // NOTE：后端检测不依赖 LayaGL.renderEngine（该字段在部分 Laya 版本/路径下长期为 null），
+        //       改用主渲染画布是否持有 webgpu 上下文作权威判定。
         Laya.timer.frameLoop(1, null, () => {
             const ts = performance.now();
+            // 权威后端检测：主渲染画布（尺寸最大者）已持有 webgpu 上下文 → 真 WebGPU；
+            // 已持有 webgl 上下文时 getContext('webgpu') 返回 null → WebGL。
+            if ((adapter as any)._resolvedBackend === undefined) {
+                let detected: string | undefined;
+                const canvases = Array.from(document.querySelectorAll('canvas')) as HTMLCanvasElement[];
+                let main: HTMLCanvasElement | null = null;
+                for (const c of canvases) {
+                    if (!main || (c.width * c.height) > (main.width * main.height)) main = c;
+                }
+                if (main && main.width > 0) {
+                    try {
+                        detected = (main.getContext('webgpu') !== null) ? 'webgpu' : 'webgl';
+                    } catch (_) { detected = 'webgl'; }
+                }
+                if (detected) {
+                    (adapter as any)._resolvedBackend = detected;
+                    (globalThis as any).__layaBackend = detected;
+                    const eng = (globalThis as any).LayaGL && (globalThis as any).LayaGL.renderEngine;
+                    (globalThis as any).__layaEngineCtorName = eng ? eng.constructor.name : 'null';
+                    try {
+                        (globalThis as any).__layaDiagReady = {
+                            ctorName: eng ? eng.constructor.name : 'null',
+                            detectedBackend: detected,
+                            mainCanvas: main ? (main.width + 'x' + main.height) : 'none'
+                        };
+                        console.log('[LayaBench] backend resolved:', detected, main.width + 'x' + main.height);
+                    } catch (_) {}
+                }
+            }
             runner.tick(ts);
             adapter.step(ts);
             LayaBench.updateLive(ts, runner, adapter);
         });
 
-        // 自动测试：?auto=1&variant=V1&count=10000（编排页用，进入即跑固定采样）
+        // 自动测试：?auto=1&mode=fixed|ramp&variant=V1&count=10000（编排页用）
+        // mode=ramp：承载力阶梯（autoRamp 出 cap + 逐档曲线），与 3D 水族馆/总控 RAMP_SCENES 口径一致
         const q = new URLSearchParams(location.search);
         if (q.get('auto') === '1') {
             const variant = q.get('variant') || 'V1';
@@ -66,8 +143,79 @@ export class LayaBench {
             const $c = document.querySelector('#cnt') as HTMLInputElement;
             if ($v) { $v.value = variant; }
             if ($c) { $c.value = String(count); }
-            LayaBench.loadAndRun(Laya, runner, adapter, backend, $v, $c);
+            if (q.get('mode') === 'ramp') {
+                LayaBench.loadAndRamp(Laya, runner, adapter, backend, $v);
+            } else {
+                LayaBench.loadAndRun(Laya, runner, adapter, backend, $v, $c);
+            }
         }
+    }
+
+    /** 载入贴图并跑承载力阶梯（?auto=1&mode=ramp）：组合结果 cap/levels 写 __benchLastResult 供总控采集 */
+    static loadAndRamp(Laya: any, runner: any, adapter: any, backend: string, $v: HTMLSelectElement): void {
+        const $live = document.querySelector('#live') as HTMLElement;
+        const variant = $v ? $v.value : 'boids';
+        const names = variant === 'boids' ? FISH_IMGS
+            : variant === 'V1' ? BUNNY_IMGS.slice(0, 1)
+                : variant === 'V2' ? BUNNY_IMGS.slice(0, 8)
+                    : BUNNY_IMGS;
+        const prefix = variant === 'boids' ? FISH_PREFIX : RES_PREFIX;
+        const urls = names.map((n: string) => prefix + n);
+        const requested = new URLSearchParams(location.search).get('backend');
+        const levels: any[] = [];
+        Laya.loader.load(urls, Laya.Handler.create(null, () => {
+            adapter.textures = urls.map((u: string) => Laya.loader.getRes(u));
+            runner.autoRamp({
+                engine: 'layaair-3.4.0', variant, backend,
+                counts: [2000, 5000, 10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000],
+                preWarmSec: 5, sampleSec: 6,
+                onLevel: (lv: any) => {
+                    if (lv.phase === 'retry' && $live) {
+                        $live.textContent = '档 ' + lv.count + ' 疑似抖动，加倍预热重测…';
+                        return;
+                    }
+                    if (lv.phase === 'done' && lv.json) {
+                        const j = lv.json;
+                        levels.push({
+                            count: lv.count, fps: j.fps, p50: j.p50, p95: j.p95, p99: j.p99,
+                            p1Low: j.p1Low, stdDev: j.stdDev, drawCallAvg: j.drawCallAvg, nodeCount: j.nodeCount,
+                            actualBackend: j.actualBackend, backendValid: j.backendValid,
+                            gpuVendor: j.gpuVendor, gpuRenderer: j.gpuRenderer,
+                            renderWidth: j.renderWidth, renderHeight: j.renderHeight, dpr: j.dpr,
+                            stable: lv.stable
+                        });
+                    }
+                },
+                onDone: (r: any) => {
+                    // 聚合逐档真实后端：WebGPU 臂中途静默回退 WebGL 必须在此暴露
+                    const acts: string[] = [];
+                    levels.forEach((l: any) => {
+                        const b = l.actualBackend;
+                        if (b && acts.indexOf(b) < 0) acts.push(b);
+                    });
+                    const resolved: string = (adapter as any)._resolvedBackend || backend || 'webgl';
+                    const rt = acts.length === 1 ? acts[0] : resolved;
+                    const rv = acts.length === 1 && rt === (requested || 'webgl');
+                    const result = {
+                        meta: {
+                            engine: 'layaair-3.4.0', variant,
+                            backend: rt, requestedBackend: requested || rt, backendValid: rv, mode: 'autoRamp'
+                        },
+                        cap: r.cap, jankAt: r.jankAt, capped: r.capped, invalidCurve: r.invalidCurve,
+                        thresholdAt: r.thresholdAt, fineStart: r.fineStart, fineStep: r.fineStep,
+                        levels
+                    };
+                    (window as any).__benchRampResult = result;
+                    (globalThis as any).BenchRunner.exportJSON(result);
+                    if ($live) {
+                        $live.textContent = '承载力 ' + r.cap + ' 只' +
+                            (r.jankAt != null ? '（掉帧档 ' + r.jankAt + '）' : '') +
+                            (rv ? '' : ' ⚠ 运行时后端与请求不符');
+                    }
+                }
+            });
+            if ($live) { $live.textContent = '阶梯承载力测试中…'; }
+        }));
     }
 
     /** 载入贴图并跑固定采样（HUD 按钮与自动测试共用） */
@@ -80,7 +228,8 @@ export class LayaBench {
             : variant === 'V1' ? BUNNY_IMGS.slice(0, 1)
                 : variant === 'V2' ? BUNNY_IMGS.slice(0, 8)
                     : BUNNY_IMGS;
-        const urls = names.map((n: string) => RES_PREFIX + n);
+        const prefix = variant === 'boids' ? FISH_PREFIX : RES_PREFIX;
+        const urls = names.map((n: string) => prefix + n);
         Laya.loader.load(urls, Laya.Handler.create(null, () => {
             adapter.textures = urls.map((u: string) => Laya.loader.getRes(u));
             runner.fixedRun({
@@ -99,7 +248,8 @@ export class LayaBench {
         liveLastTs = ts;
         if (!liveEl) return;
         const now = performance.now();
-        if (now - (window as any).__layaLastLive > 400) {
+        const lastLive = (window as any).__layaLastLive || 0;
+        if (now - lastLive > 400) {
             (window as any).__layaLastLive = now;
             const dc = adapter.readDrawCalls ? adapter.readDrawCalls() : -1;
             liveEl.textContent =
@@ -150,7 +300,7 @@ export class LayaBench {
             '<option value="V1">Bunny V1 同纹理合批</option>' +
             '<option value="V2">Bunny V2 atlas多帧</option>' +
             '<option value="V3">Bunny V3 随机变换</option>' +
-            '<option value="V4">Bunny V4 不合批</option>' +
+            '<option value="V4">Bunny V4 12纹理压力</option>' +
             '<option value="boids">水族馆 2D Boids</option>' +
             '</select></div>' +
             '<div class="row"><span class="lbl">数量</span>' +
@@ -255,7 +405,8 @@ export class LayaBench {
                 : variant === 'V1' ? BUNNY_IMGS.slice(0, 1)
                     : variant === 'V2' ? BUNNY_IMGS.slice(0, 8)
                         : BUNNY_IMGS;
-            const urls = names.map((n: string) => RES_PREFIX + n);
+            const prefix = variant === 'boids' ? FISH_PREFIX : RES_PREFIX;
+            const urls = names.map((n: string) => prefix + n);
             Laya.loader.load(urls, Laya.Handler.create(null, () => {
                 adapter.textures = urls.map((u: string) => Laya.loader.getRes(u));
                 cb();
@@ -337,7 +488,12 @@ class LayaAdapter {
             this.sim.update(dt);
             for (let i = 0; i < len; i++) {
                 nodes[i].pos(list[i].x, list[i].y);
-                nodes[i].rotation = list[i].angle * 57.29577951;
+                const cosA = Math.cos(list[i].angle);
+                const s = list[i].scale || 1;
+                nodes[i].scaleX = (cosA > 0 ? -s : s);
+                nodes[i].scaleY = s;
+                const tilt = cosA > 0 ? list[i].angle : (list[i].angle - Math.PI);
+                nodes[i].rotation = tilt * 57.29577951;
             }
         } else {
             this.sim.update();
@@ -359,14 +515,45 @@ class LayaAdapter {
 
     readDrawCalls(): number {
         const g: any = globalThis as any;
-        const statEl = g.StatElement || (g.Laya && g.Laya.StatElement);
-        if (g.LayaGL && g.LayaGL.statAgent && statEl) {
-            // 2D 场景只记 CT_2DDrawCall（合批提交数）。
-            // 注意：CT_DrawCall 在 2D 的 geometry 路径也会累加（源码 laya.webgl_2D.js L5187），
-            // 两者相加会重复计数，故 2D 只取 CT_2DDrawCall。3D 场景将来单独读 CT_DrawCall。
-            return g.LayaGL.statAgent.getElementData(statEl.CT_2DDrawCall);
+        const L = g.Laya;
+        // statAgent 在 Laya.LayaGL 命名空间下（发布产物里 globalThis.LayaGL 不存在）
+        const statAgent = (g.LayaGL && g.LayaGL.statAgent) || (L && L.LayaGL && L.LayaGL.statAgent);
+        const statEl = g.StatElement || (L && L.StatElement);
+        if (statAgent && statEl) {
+            const v = statAgent.getElementData(statEl.CT_2DDrawCall);
+            return typeof v === 'number' ? v : -1;
         }
         return -1;
+    }
+
+    readBenchMetrics(): any {
+        const g: any = globalThis as any;
+        const engine = g.LayaGL && g.LayaGL.renderEngine;
+        // 多策略探针：优先查 device 是否为 GPUDevice；其次查 constructor 名；duck-type；最后记录 diag
+        // 使用帧循环设置的 _resolvedBackend，确保引擎已异步初始化完成
+        const resolvedBackend: string = (this as any)._resolvedBackend || 'webgl';
+        let actualBackend = resolvedBackend;
+        // 记录调试信息供后续观察（DevTools: window.__layaActualBackend / __layaDiag）
+        (globalThis as any).__layaActualBackend = actualBackend;
+        (globalThis as any).__layaEngineCtorName = engine ? engine.constructor.name : 'null';
+        try {
+            if (engine) {
+                const d2: any = {};
+                for (const k of ['_device','device','_nativeDevice','_gpuDevice','gpuDevice',
+                    '_wgDevice','_gl','gl','_context','context']) {
+                    if (engine[k] !== undefined) d2['f_' + k] = String(engine[k]).slice(0, 60);
+                }
+                (globalThis as any).__layaDiagMetrics = d2;
+            }
+        } catch (_) {}
+        return {
+            actualBackend,
+            renderWidth: this.W,
+            renderHeight: this.H,
+            antialias: false,
+            workloadClass: this.variant === 'V4' ? 'finite-multi-texture-pressure' : 'standard',
+            textureCount: this.variant === 'V1' || this.variant === 'V3' ? 1 : this.variant === 'V2' ? 8 : 12,
+        };
     }
 
     nodeCount(): number { return this.nodes.length; }

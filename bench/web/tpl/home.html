@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>引擎对比基准 · Cocos vs LayaAir vs 自研 Egret</title>
+<style>
+  :root{
+    --bg:#ffffff; --soft:#f6f6f7; --text:#213547; --muted:rgba(60,60,67,.78);
+    --divider:#e2e2e6; --border:#d7d7db; --brand:#3451b2; --brand-hover:#5672cd;
+    --brand-text:#ffffff; --alt-bg:#f6f6f7; --code:#f6f6f7; --best:#1d3a2a; --best-text:#d6f5d6;
+    --win:#2e9e5b; --lose:#c0392b;
+  }
+  @media (prefers-color-scheme: dark){
+    html:not([data-theme="light"]){
+      --bg:#1b1b1f; --soft:#252529; --text:rgba(255,255,255,.87); --muted:rgba(235,235,245,.6);
+      --divider:#2e2e32; --border:#3a3a3f; --brand:#5672cd; --brand-hover:#7e93e0;
+      --brand-text:#ffffff; --alt-bg:#26262a; --code:#252529; --best:#1d3a2a; --best-text:#d6f5d6;
+    }
+  }
+  html[data-theme="dark"]{
+    --bg:#1b1b1f; --soft:#252529; --text:rgba(255,255,255,.87); --muted:rgba(235,235,245,.6);
+    --divider:#2e2e32; --border:#3a3a3f; --brand:#5672cd; --brand-hover:#7e93e0;
+    --brand-text:#ffffff; --alt-bg:#26262a; --code:#252529; --best:#1d3a2a; --best-text:#d6f5d6;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:15px/1.75 -apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif}
+  a{color:var(--brand);text-decoration:none}
+  a:hover{color:var(--brand-hover)}
+  .container{max-width:1152px;margin:0 auto;padding:0 24px}
+  code{background:var(--code);border-radius:4px;padding:2px 6px;font:13px Consolas,monospace}
+
+  /* 顶栏（CSDN 式：logo + 搜索 + 操作） */
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:50;height:60px;
+       display:flex;align-items:center;gap:16px;padding:0 20px;
+       background:var(--bg);border-bottom:1px solid var(--divider)}
+  .topbar .logo{font-weight:700;font-size:17px;color:var(--text);flex:none}
+  .search{flex:1;max-width:560px;display:flex;margin:0 auto}
+  .search input{flex:1;height:36px;border:1px solid var(--border);border-right:none;
+       border-radius:8px 0 0 8px;padding:0 14px;font-size:13.5px;background:var(--soft);
+       color:var(--text);outline:none;min-width:0}
+  .search input:focus{border-color:var(--brand)}
+  .search button{height:36px;padding:0 20px;border:1px solid var(--brand);background:var(--brand);
+       color:var(--brand-text);border-radius:0 8px 8px 0;cursor:pointer;font-size:13.5px}
+  .search button:hover{background:var(--brand-hover)}
+  .theme-btn{margin-left:auto;width:34px;height:34px;border-radius:50%;border:1px solid var(--border);
+       background:var(--alt-bg);cursor:pointer;font-size:15px;line-height:1;
+       display:inline-flex;align-items:center;justify-content:center;flex:none;transition:.15s}
+  .theme-btn:hover{border-color:var(--brand)}
+  .topbar .gh{font-size:13px;flex:none}
+
+  /* 左侧导航栏 */
+  .sidebar{position:fixed;top:60px;left:0;bottom:0;width:216px;overflow-y:auto;
+       background:var(--bg);border-right:1px solid var(--divider);padding:14px 10px 24px}
+  .sgroup{font-size:12px;color:var(--muted);padding:16px 14px 6px;letter-spacing:1px}
+  .sgroup:first-child{padding-top:4px}
+  .snav{display:flex;flex-direction:column;gap:2px}
+  .snav a{display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:8px;
+       font-size:14px;color:var(--text);transition:.12s}
+  .snav a:hover{background:var(--soft)}
+  .snav a.active{background:var(--soft);color:var(--brand);font-weight:600}
+  .snav a.ext{color:var(--brand)}
+
+  /* 主内容区 */
+  .main{margin-left:216px;padding-top:60px}
+  section{scroll-margin-top:72px}
+  @keyframes flash{0%{background:var(--soft)}100%{background:transparent}}
+  .flash{animation:flash 1.6s ease-out}
+
+  /* Hero（左上角对齐，参考 Vercel/Stripe 式左对齐 hero） */
+  .hero{text-align:left;padding:52px 24px 36px}
+  .hero .name{font-size:42px;font-weight:800;letter-spacing:-.5px;margin:0;
+       background:linear-gradient(120deg,var(--brand) 30%,#41b883);-webkit-background-clip:text;
+       background-clip:text;color:transparent}
+  .hero .text{font-size:29px;font-weight:700;margin:12px 0 10px}
+  .hero .tagline{font-size:15.5px;color:var(--muted);max-width:820px;margin:0}
+  .actions{display:flex;flex-wrap:wrap;gap:12px;justify-content:flex-start;margin-top:26px}
+  .btn{display:inline-block;padding:8px 22px;border-radius:20px;font-weight:600;font-size:15px;
+       border:1px solid transparent;transition:.15s}
+  .btn.brand{background:var(--brand);color:var(--brand-text)}
+  .btn.brand:hover{background:var(--brand-hover);color:var(--brand-text)}
+  .btn.alt{background:var(--alt-bg);border-color:var(--border);color:var(--text)}
+  .btn.alt:hover{border-color:var(--brand);color:var(--brand)}
+
+  /* 分区 */
+  section{padding:44px 0 8px}
+  section>h2{font-size:27px;border-top:1px solid var(--divider);padding-top:32px;margin:0 0 16px}
+  section>h3{font-size:19px;margin:26px 0 8px}
+  section p.lead{color:var(--muted)}
+  .doc-links{font-size:13.5px;color:var(--muted)}
+  .doc-links code{font-size:12px}
+
+  /* 三引擎卡（架构区） */
+  .engines{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .engine{border:1px solid var(--border);border-radius:12px;padding:18px 20px}
+  .engine h4{margin:0 0 8px;font-size:16px}
+  .engine p{margin:0 0 6px;font-size:13.5px;color:var(--muted)}
+  .engine .tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;
+       background:var(--soft);border:1px solid var(--border);color:var(--muted);margin:0 4px 4px 0}
+
+  /* 场景卡 */
+  .scene-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .scene{display:flex;align-items:center;gap:14px;text-decoration:none;color:inherit;
+       border:1px solid var(--border);border-radius:12px;padding:18px 20px;transition:.15s}
+  .scene:hover{border-color:var(--brand)}
+  .scene .ic{font-size:30px;line-height:1}
+  .scene .tx{flex:1}
+  .scene h3{margin:0 0 2px;font-size:16px}
+  .scene p{margin:0;color:var(--muted);font-size:13px}
+  .scene .arrow{color:var(--muted);font-size:18px}
+
+  /* 表格 */
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:8px 0}
+  th,td{border:1px solid var(--divider);padding:7px 12px;text-align:left}
+  th{background:var(--soft)}
+  td.num,th.num{text-align:right;white-space:nowrap}
+  td.ctr,th.ctr{text-align:center}
+  tr.best td{background:var(--best);color:var(--best-text)}
+  .fn{color:var(--muted);font-size:12.5px;margin-top:6px}
+  .yes{color:var(--win);font-weight:700}
+  .no{color:var(--lose);font-weight:700}
+
+  ul.tight{margin:8px 0;padding-left:22px}
+  ul.tight li{margin:6px 0}
+
+  /* 官方链接卡 */
+  .link-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .link-card{border:1px solid var(--border);border-radius:12px;padding:18px 20px}
+  .link-card h4{margin:0 0 10px;font-size:16px}
+  .link-card ul{list-style:none;margin:0;padding:0}
+  .link-card li{margin:8px 0;font-size:14px}
+  .link-card .cat{color:var(--muted);margin-right:8px;font-size:13px}
+
+  /* 现状 */
+  .arm{font-family:Consolas,monospace;font-size:13.5px}
+  .arm .ok{color:var(--win);font-weight:700}
+  .arm .no{color:var(--lose);font-weight:700}
+
+  footer{border-top:1px solid var(--divider);margin-top:56px;padding:28px 0 40px;
+       color:var(--muted);font-size:13px;text-align:center}
+
+  @media (max-width:900px){
+    .sidebar{display:none}
+    .main{margin-left:0}
+    .topbar .gh{display:none}
+  }
+  @media (max-width:640px){
+    .hero .name{font-size:30px}
+    .hero .text{font-size:22px}
+    .scene-grid,.engines,.link-grid{grid-template-columns:1fr}
+    th,td{white-space:normal}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <span class="logo">引擎对比基准</span>
+  <div class="search">
+    <input id="q" type="text" placeholder="搜索本站：合批 / drawCall / 微信小游戏 / WebGPU …" autocomplete="off">
+    <button id="qBtn">搜索</button>
+  </div>
+  <a class="gh" href="https://github.com/watttaa/engine_compare" target="_blank" rel="noopener">GitHub</a>
+  <button class="theme-btn" id="themeBtn" aria-label="切换明暗主题">🌗</button>
+</header>
+
+<aside class="sidebar">
+  <div class="sgroup">对比知识</div>
+  <nav class="snav" id="snav">
+    <a href="#what">🏠 网站简介</a>
+    <a href="#arch">🧬 架构与基本盘</a>
+    <a href="#batch">🧵 2D 合批机制</a>
+    <a href="#webgpu">🚀 WebGPU 现状</a>
+    <a href="#platform">📱 平台与生态</a>
+  </nav>
+  <div class="sgroup">测试中心</div>
+  <nav class="snav">
+    <a href="tests.html">🏁 进入测试中心</a>
+  </nav>
+  <div class="sgroup">附录</div>
+  <nav class="snav">
+    <a href="#methodology">🔬 方法论要点</a>
+    <a href="#links">🔗 官方资源与社区</a>
+    <a href="#status">📡 现状一览</a>
+  </nav>
+</aside>
+
+<div class="main">
+
+<header class="hero container">
+  <h1 class="name">引擎对比基准</h1>
+  <p class="text">把引擎差距，摆到桌面上比</p>
+  <p class="tagline">Cocos Creator 3.8.8 × LayaAir 3.4.0 × 自研 Egret 5.4.1 ——
+  从渲染管线、合批机制、WebGPU 现状到平台生态的全方位对比；性能实测只是其中一环，
+  每个结论都给源码级证据与可复现实验</p>
+  <div class="actions">
+    <a class="btn brand" href="tests.html">🏁 进入测试中心</a>
+    <a class="btn alt" href="#conclusions">📋 结论速览</a>
+  </div>
+</header>
+
+<div class="container">
+
+  <section id="what">
+    <h2>网站简介</h2>
+    <p>这是面向引擎开发与客户端技术决策者的<strong>源码级比较项目</strong>。比较对象固定为
+    Cocos Creator 3.8.8、LayaAir 3.4.0 与内部维护的 Egret 5.4.1 分支；重点不是 API 罗列或主观体验，
+    而是沿着实际渲染与发布链路定位可复核差异：渲染数据如何收集、何时断批、命令怎样提交、
+    WebGL/WebGPU 后端在哪一层分叉，以及这些实现细节如何反映到帧时间与 draw call。</p>
+    <p>证据按强度分层：<strong>引擎源码</strong>用于确定机制与调用路径；<strong>官方文档</strong>用于确认公开契约和平台能力；
+    <strong>统一基准</strong>用于量化特定版本、设备和场景下的结果。源码结论标注具体引擎版本与文件路径；
+    实测数据保留 JSON、环境元数据与采样口径。不能由公开资料或单次测试推出的结论，不写成普适事实。</p>
+    <p>性能实验不是独立的 FPS 展示页：三家适配器共用同一份 <code>sim-core</code>（运动仿真、预热、采样和报告流程），
+    使用 <code>performance.now()</code> 作为统一时间源，报告 p50/p95/p99 帧时间和 draw call。页面同时保留
+    2D 合批、WebGPU、编辑器/平台和生态等非跑分维度，服务于 2D/2.5D 重度 H5 MMO 的技术选型。</p>
+    <p class="doc-links">可审计材料（仓库根目录）：
+      <a href="https://github.com/watttaa/engine_compare/blob/main/引擎选型对比-Cocos-vs-LayaAir.md" target="_blank" rel="noopener">《引擎选型对比报告》</a> ·
+      <a href="https://github.com/watttaa/engine_compare/blob/main/三引擎2D渲染管线对比.md" target="_blank" rel="noopener">《三引擎2D渲染管线对比》</a> ·
+      <a href="https://github.com/watttaa/engine_compare/blob/main/三引擎2D渲染管线源码级对比.md" target="_blank" rel="noopener">《三引擎2D渲染管线源码级对比》</a> ·
+      <a href="https://github.com/watttaa/engine_compare/blob/main/WebGPU-2D渲染现状调研.md" target="_blank" rel="noopener">《WebGPU-2D渲染现状调研》</a> ·
+      <a href="https://github.com/watttaa/engine_compare/blob/main/自研引擎魔改思路总结.md" target="_blank" rel="noopener">《自研引擎魔改思路总结》</a> ·
+      <a href="https://github.com/watttaa/engine_compare/blob/main/Cocos-vs-Laya-汇报稿.md" target="_blank" rel="noopener">《选型汇报稿》</a></p>
+  </section>
+
+  <section id="arch">
+    <h2>架构与基本盘</h2>
+    <div class="engines">
+      <div class="engine">
+        <h4>Cocos Creator 3.8.8</h4>
+        <p><span class="tag">雅基软件</span><span class="tag">MIT（引擎）</span><span class="tag">TS + C++/WASM</span></p>
+        <p><strong>GFX 抽象层</strong>一套渲染代码对接 WebGL / WebGL2 / WebGPU / Vulkan / Metal / GLES 六种图形 API；
+        类 Unity 组件模型；Custom Pipeline 可编程管线；与微信、抖音平台官方深度共建，平台新能力通常首发适配。</p>
+      </div>
+      <div class="engine">
+        <h4>LayaAir 3.4</h4>
+        <p><span class="tag">Layabox</span><span class="tag">MIT（引擎）</span><span class="tag">纯 TypeScript</span></p>
+        <p><strong>全 TS 引擎</strong>读源码、改引擎门槛最低（AS3/Egret 页游团队迁移友好）；2D Sprite 与 3D Sprite3D
+        <strong>双树分离</strong>，混排心智负担略高；WebGPU 投入激进，3D 管线对 WebGPU 优化较深。</p>
+      </div>
+      <div class="engine">
+        <h4>自研 Egret 5.4.1</h4>
+        <p><span class="tag">内部维护</span><span class="tag">WebGL 基线魔改</span><span class="tag">WebGPU 后端自研</span></p>
+        <p>原生 Egret 基础上叠加：<strong>动态合图</strong>（2048 大图集×10，跨图片合批）、
+        <strong>SDF 文字渲染</strong>（设计时对标 Godot 的 MSDF 文字方案）、etc_alpha_mask 双纹理、
+        以及<strong>多纹理合批的 WebGPU 后端</strong>（一个 bind group 挂多张图集）。</p>
+      </div>
+    </div>
+    <table>
+      <tr><th style="width:21%">维度</th><th style="width:13%">判断</th><th>工程含义与判断边界</th></tr>
+      <tr><td>2D/2.5D 渲染成熟度</td><td class="ctr"><span class="yes">Cocos</span></td><td><strong>为何：</strong>2D 的 Batcher2D、UITransform、Mask/裁剪、材质与渲染数据组装在同一套 UI 管线中长期迭代；对大量 Sprite、UI、文字混排的常规项目，默认路径更完整。<br><strong>不代表：</strong>不表示每个 2D 场景都更快；资源是否同图集、节点顺序、字体和遮罩仍决定最终 draw call。</td></tr>
+      <tr><td>重度 3D 渲染上限</td><td class="ctr"><span class="yes">LayaAir</span></td><td><strong>为何：</strong>Laya 近年把 WebGPU、PBR、ClusterLighting 和 3D 发布链路作为重点投入，纯 3D 场景可直接利用这些路径。<br><strong>不代表：</strong>WebGPU 并非所有平台可用；实际项目仍须按目标浏览器、模型/材质复杂度和 GPU 重跑 3D 基准。</td></tr>
+      <tr><td>微信 / 抖音小游戏适配</td><td class="ctr"><span class="yes">Cocos</span></td><td><strong>为何：</strong>官方发布面板、平台适配和包体裁剪工作流更成熟，遇到平台 API 或构建问题时可查资料和案例更多。<br><strong>不代表：</strong>Laya 不能发布两平台；这是交付风险、工具链与排障成本的比较，不是运行时性能结论。</td></tr>
+      <tr><td>编辑器 / 工具链</td><td class="ctr"><span class="yes">Cocos</span></td><td><strong>为何：</strong>场景、Prefab、动画、UI、构建、调试等工作流集成度较高，编辑器扩展与现成团队经验更多。<br><strong>代价：</strong>抽象层多、工程结构更重；需要改底层或定位极端性能问题时，链路未必比纯 TS 短。</td></tr>
+      <tr><td>文档与社区 / 招聘</td><td class="ctr"><span class="yes">Cocos</span></td><td><strong>为何：</strong>中文教程、第三方插件、问题检索结果和具备 Creator 经验的人才池通常更多，降低新人入场与线上问题排查成本。<br><strong>边界：</strong>没有微信官方的精确引擎份额统计；这里是工程可获得性判断，不应解读为严格市场份额。</td></tr>
+      <tr><td>API 简洁度 / 上手</td><td class="ctr"><span class="yes">LayaAir</span></td><td><strong>为何：</strong>显示对象、资源和事件 API 较直接，纯 TS 项目可较少经过组件/序列化层；AS3/Egret 或页游背景团队迁移路径更短。<br><strong>代价：</strong>简单 API 不自动解决资源分组、图集、渲染顺序和性能规范，团队仍需建立自己的工程约束。</td></tr>
+      <tr><td>源码可读可改性</td><td class="ctr"><span class="yes">LayaAir</span></td><td><strong>为何：</strong>主要运行时为 TypeScript，可在浏览器断点直接跟入；定制 2D/3D 行为的编译、调试和二次发布闭环较短。<br><strong>边界：</strong>可读不等于改动风险低；渲染状态、资源生命周期和跨端兼容仍需要回归矩阵。</td></tr>
+      <tr><td>热更新灵活度</td><td class="ctr">平手</td><td><strong>Web：</strong>资源和脚本可由业务 CDN / 版本清单控制。<br><strong>小游戏：</strong>分包、远程资源、代码包和审核策略由宿主平台约束；两家引擎都不能绕过平台规则，差别主要在各自发布工具的配置体验。</td></tr>
+      <tr><td>引擎迭代活跃度</td><td class="ctr"><span class="yes">Cocos</span></td><td><strong>为何：</strong>COCOS 4 已发布且改为完全开源，Creator 3.8.x 仍有维护线，版本路线公开度较高。<br><strong>迁移提醒：</strong>4.x 与当前 3.8 基线不是无成本替换；现有项目应把升级视为独立验证项目，而非自动性能收益。</td></tr>
+    </table>
+    <p class="fn">阅读方式："判断"服务于当前目标（2D/2.5D 重度 H5 MMO，Web + 微信 + 抖音）；每行的"为何"是可讨论的工程依据，"不代表 / 代价 / 边界"限定其适用范围。出处：《引擎选型对比-Cocos-vs-LayaAir.md》§1/§2/§3（2026-07）。开发者规模、市占率为各厂商与第三方口径（微信官方未发布精确引擎占比）；Cocos 于 2025-11 被忽然科技收购，COCOS 4 已移除商业限制条款。</p>
+  </section>
+
+  <section id="batch">
+    <h2>2D 渲染与合批机制</h2>
+    <p class="lead">合批是 2D 性能的命门：同一屏精灵数下，drawCall 差 1000 倍就是流畅与卡顿的差距。三家思路完全不同。</p>
+    <table>
+      <tr><th>引擎</th><th>2D 合批思路</th><th>多纹理交叉场景</th><th>实测 dc（V4 · 10000 精灵）</th></tr>
+      <tr><td><strong>Cocos</strong></td>
+          <td>统一 Batcher2D 状态机：<span style="white-space:nowrap">同材质+同 BlendState+同纹理源+同 Layer 连续</span>才合批；<code>WEBGL_multi_draw</code> 扩展一次提交多图元</td>
+          <td><span class="yes">跨纹理不断批</span>（multi_draw + 可选动态合图）</td><td class="num">≈10</td></tr>
+      <tr><td><strong>LayaAir</strong></td>
+          <td>普通 Sprite 可按<strong>同纹理 / 同图集</strong>合批；当前基准的交叉散图路径未启用自动动态合图，因而逐精灵提交。序列帧 / Graphics 走专用批处理</td>
+          <td><span class="no">当前基准：未跨纹理合批</span>——V4 的 12 张散图交叉排列，实测每精灵独立渲染元素；引擎另有 DynamicAtlasManager / 自动动态图集路径</td><td class="num">= 10000（=精灵数）</td></tr>
+      <tr><td><strong>Egret 自研</strong></td>
+          <td>WebGL：动态合图（TextureAtlasManager，≤512×512 纹理自动入驻 2048 大图集）；WebGPU：纹理槽合批（16 槽 bind group）</td>
+          <td><span class="yes">跨纹理合批</span>（图集打包 / 多纹理槽）</td><td class="num">≈1~4</td></tr>
+    </table>
+    <h3>Laya 掉到一半帧率的三条源码级根因</h3>
+    <ul class="tight">
+      <li><strong>合批</strong>：在本站 V2/V4 的交叉散图标准 Sprite 路径中，未启用动态合图，dc 直接等于精灵数；这不等同于 Laya 2D 在同纹理/同图集路径完全不合批</li>
+      <li><strong>变换</strong>：<code>Matrix.setMatrix</code> 每帧每精灵无条件重算 6 次三角函数（skew=0 也算）→ 1 万精灵每帧 6 万次三角函数</li>
+      <li><strong>WebGPU 提交</strong>：每帧对每个精灵跑一遍 <code>_prepare</code> 状态机（矩阵检查 + shader 比较 + 几何状态），开销随精灵数线性增长——这是它 WebGPU 反而更慢的原因</li>
+    </ul>
+    <p class="fn">出处：《三引擎2D渲染管线对比.md》（2026-08-28 源码实查）+ 本站基准实测（见下文性能实测）。</p>
+  </section>
+
+  <section id="webgpu">
+    <h2>WebGPU 现状（2D）</h2>
+    <div class="engines">
+      <div class="engine">
+        <h4>Cocos</h4>
+        <p><strong>同源管线，最干净</strong>：2D 渲染器与 WebGL 共用 Batcher2D + GFX 抽象，切后端只换 renderMode，
+        dc 基本一致（V1-V4 均 ≈10）。WebGPU 后端标记实验性（Web-Desktop），实测可跑。</p>
+      </div>
+      <div class="engine">
+        <h4>LayaAir</h4>
+        <p><strong>路径分叉，开销更大</strong>：WebGPU 2D 走逐元素 <code>_prepare</code> 状态机，
+        变换密集/多纹理场景 WebGPU 反而比自家 WebGL 慢（V3：WebGPU 41.4 vs WebGL 43.3 fps）。3D 侧 WebGPU 优化较深。</p>
+      </div>
+      <div class="engine">
+        <h4>Egret 自研</h4>
+        <p><strong>后端级替换</strong>：实现 RenderBuffer/RenderContext 接口层，业务零改动；
+        多纹理合批（一个 bind group 挂多张图集），Bunnymark 承载力约为 WebGL 4-6 倍、dc 约 1/3000。</p>
+      </div>
+    </div>
+    <p class="fn">WebGPU 不是处处赢：GPU 填充率瓶颈时与 WebGL 同为 60fps，低端设备与部分浏览器上还可能更慢——负向结论同样如实记录。</p>
+  </section>
+
+  <section id="platform">
+    <h2>平台、工具链与生态</h2>
+    <table>
+      <tr><th style="width:30%">项</th><th style="width:35%">Cocos Creator</th><th style="width:35%">LayaAir</th></tr>
+      <tr><td>微信小游戏</td><td><span class="yes">与微信团队深度共建</span>，WASM 高性能模式首发适配，首包裁剪极致</td><td>支持，适配节奏略慢于 Cocos</td></tr>
+      <tr><td>抖音小游戏</td><td><span class="yes">官方一键发布</span> + 字节联合优化，踩坑最少</td><td>支持</td></tr>
+      <tr><td>原生 App</td><td>iOS / Android / 桌面 / 鸿蒙</td><td>LayaNative（App）+ 桌面安装包（3.2+）</td></tr>
+      <tr><td>编辑器</td><td><span class="yes">Creator 全流程可视化</span>：场景/动画/UI/预览/打包一体，扩展生态大</td><td>LayaAir IDE：轻量，3D 工作流完整</td></tr>
+      <tr><td>物理</td><td>Bullet / PhysX（WASM，3.8.5+ 可按需分包）</td><td>Bullet / PhysX 可选，2D 用 Box2D</td></tr>
+      <tr><td>社区 / 招聘</td><td><span class="yes">社区与人才储备明显更大</span>（约数倍量级）</td><td>社区精而小</td></tr>
+      <tr><td>商业授权</td><td>引擎 MIT 免费，编辑器闭源免费</td><td>引擎 MIT 免费，IDE 闭源免费</td></tr>
+    </table>
+    <p class="fn">出处：《引擎选型对比-Cocos-vs-LayaAir.md》§6-§13。结论：2D/2.5D 重度 MMO 三端发布 → 推荐 Cocos Creator 3.8.x；重度 3D + WebGPU 上限 → LayaAir 有差异化优势。</p>
+  </section>
+
+  <section id="bench">
+    <h2>性能实测</h2>
+    <p class="lead">性能测试入口、场景说明、实时运行页面与 JSON 数据看板已移至 <a href="tests.html">测试中心</a>。
+    主站保留经过审计的结论摘要，详细采集口径见<a href="#methodology">方法论要点</a>。</p>
+
+    <h3 id="conclusions">结论速览 · BunnyMark 2D（10000 精灵真机帧率 fps）</h3>
+    <table>
+      <tr><th>场景</th><th>含义</th><th class="num">Cocos WebGL / WebGPU</th><th class="num">Laya WebGL / WebGPU</th></tr>
+      <tr><td>V1 单纹理</td><td>合批饱和基线</td><td class="num">57.7 / 58.1</td><td class="num">58.2 / 58.2</td></tr>
+      <tr class="best"><td>V2 8 纹理交叉</td><td>图集帧混排（项目常态）</td><td class="num"><strong>58.3 / 58.3</strong></td><td class="num">29.4 / 33.1</td></tr>
+      <tr class="best"><td>V3 单纹理+变换</td><td>Buff / 飘字特效</td><td class="num"><strong>58.6 / 57.3</strong></td><td class="num">43.3 / 41.4</td></tr>
+      <tr class="best"><td>V4 12 纹理交叉</td><td>UI 混排</td><td class="num"><strong>58.2 / 58.1</strong></td><td class="num">38.0 / 29.8</td></tr>
+    </table>
+    <ul class="tight">
+      <li><strong>2D</strong>：单纹理两者打平；纹理交叉 / 变换密集（MMO 常态）Laya 帧率约为 Cocos 一半，掉帧率 100%</li>
+      <li><strong>3D</strong>：LayaAir 的差异化优势在重度 3D + WebGPU 上限（LayaX 管线）；Cocos GFX 双后端同源更稳</li>
+      <li><strong>自研 Egret</strong>：WebGPU 多纹理合批承载力约为 WebGL 4-6 倍、drawCall 约 1/3000</li>
+    </ul>
+    <p class="fn">数据出处：《Cocos-vs-Laya-汇报稿.md》（2026-08-31 真机实测）。
+    注意：跨引擎比较存在画布物理像素口径差异（Egret/Laya 固定 1280×720，Cocos 随窗口×DPR），详见审计记录。</p>
+
+  </section>
+
+  <section id="methodology">
+    <h2>方法论要点</h2>
+    <ul class="tight">
+      <li>三引擎共用 <code>sim-core</code>（逐字节同一份）：物理推进、统计采样、流程驱动完全一致</li>
+      <li>唯一时间源 <code>performance.now()</code>；tick 固定在帧回调最前端；&gt;200ms 帧丢弃（后台切换 / 大 GC）</li>
+      <li>动态预热：帧时滑动窗口收敛后才开始采样（防 WebGPU 首跑 PSO 编译污染）</li>
+      <li>帧时间优先：p50 / p95 / p99 + 掉帧率；承载力走阶梯加压（持续掉帧即停）+ 临界点细扫 + 抖动重试</li>
+      <li>drawCall 口径逐引擎核对：hook 探针 + 引擎计数器双路径，含 <code>WEBGL_multi_draw</code> 扩展拦截；假渲染防护（截图 + probe 计数）</li>
+      <li>公平性清单：同机、同浏览器版本、插电、独显、关无关插件；GPU 信息与画布尺寸随 JSON 归档</li>
+    </ul>
+  </section>
+
+  <section id="links">
+    <h2>官方资源与社区</h2>
+    <div class="link-grid">
+      <div class="link-card">
+        <h4>Cocos</h4>
+        <ul>
+          <li><span class="cat">官网</span><a href="https://www.cocos.com/" target="_blank" rel="noopener">cocos.com</a></li>
+          <li><span class="cat">中文文档</span><a href="https://docs.cocos.com/creator/3.8/manual/zh/" target="_blank" rel="noopener">Creator 3.8 手册</a></li>
+          <li><span class="cat">社区论坛</span><a href="https://forum.cocos.org/" target="_blank" rel="noopener">forum.cocos.org</a></li>
+        </ul>
+      </div>
+      <div class="link-card">
+        <h4>LayaAir</h4>
+        <ul>
+          <li><span class="cat">官网</span><a href="https://www.layaair.com/#/" target="_blank" rel="noopener">layaair.com</a></li>
+          <li><span class="cat">引擎文档</span><a href="https://layaair.com/3.4/doc/" target="_blank" rel="noopener">3.4 版文档</a></li>
+          <li><span class="cat">社区问答</span><a href="https://ask.layabox.com/" target="_blank" rel="noopener">ask.layabox.com</a></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="status">
+    <h2>现状一览</h2>
+    <p class="lead">本页由 <code>build.js</code> 于 {{BUILD_TS}} 生成，各引擎臂就位状态为构建期自动判定：</p>
+    <div class="arm">{{ARM_STATUS}}</div>
+    <p class="fn">WebGPU 臂需 PC 端 Chrome / Edge（手机浏览器只测 WebGL）。缺产物臂由对应 IDE 发布后放入 <code>vendor/</code> 即自动上线。</p>
+  </section>
+
+</div>
+</div>
+
+<footer>
+  <div class="container">
+    引擎对比基准 · 数据与方法文档见仓库 <code>openspec/</code> 与根目录报告 md ·
+    <a href="https://github.com/watttaa/engine_compare" target="_blank" rel="noopener">github.com/watttaa/engine_compare</a>
+  </div>
+</footer>
+
+<script>
+(function () {
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.addEventListener('load', function () {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  });
+  var root = document.documentElement;
+  var btn = document.getElementById('themeBtn');
+  var saved = null;
+  try { saved = localStorage.getItem('theme'); } catch (e) {}
+  function apply(t) {
+    if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t);
+    else root.removeAttribute('data-theme');
+    btn.textContent = (t === 'dark') ? '☀️' : (t === 'light') ? '🌙' :
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? '☀️' : '🌙');
+  }
+  apply(saved || '');
+  btn.addEventListener('click', function () {
+    var cur = root.getAttribute('data-theme') ||
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var next = (cur === 'dark') ? 'light' : 'dark';
+    try { localStorage.setItem('theme', next); } catch (e) {}
+    apply(next);
+  });
+
+  // 站内搜索：滚动到第一个命中的区块并闪烁提示
+  var input = document.getElementById('q');
+  function doSearch() {
+    var kw = (input.value || '').trim().toLowerCase();
+    if (!kw) return;
+    var sec = document.querySelectorAll('.main section, .main header.hero');
+    for (var i = 0; i < sec.length; i++) {
+      if (sec[i].textContent.toLowerCase().indexOf(kw) >= 0) {
+        sec[i].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        sec[i].classList.remove('flash'); void sec[i].offsetWidth; sec[i].classList.add('flash');
+        return;
+      }
+    }
+    input.value = ''; input.placeholder = '未找到「' + kw + '」，换个词试试';
+  }
+  document.getElementById('qBtn').addEventListener('click', doSearch);
+  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') doSearch(); });
+
+  // 侧栏滚动高亮（scrollspy）
+  var links = Array.prototype.slice.call(document.querySelectorAll('#snav a'));
+  var map = {};
+  links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+  var obs = new IntersectionObserver(function (ents) {
+    ents.forEach(function (en) {
+      if (en.isIntersecting) {
+        links.forEach(function (a) { a.classList.remove('active'); });
+        var a = map[en.target.id]; if (a) a.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-72px 0px -60% 0px' });
+  ['what', 'arch', 'batch', 'webgpu', 'platform'].forEach(function (id) {
+    var el = document.getElementById(id); if (el) obs.observe(el);
+  });
+})();
+</script>
+
+</body>
+</html>

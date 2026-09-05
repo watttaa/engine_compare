@@ -1,0 +1,193 @@
+{
+  "meta": {
+    "mode": "final-compare",
+    "env": "headless-edge-webgpu",
+    "counts": "2080,2560,3200,4096",
+    "note": "webgpu 臂 channel=instanced",
+    "finishedAt": 1788505746242
+  },
+  "webgl": {
+    "maxStable": 2550,
+    "firstFail": 2560,
+    "levels": [
+      {
+        "count": 2080,
+        "stable": true,
+        "fps": 60,
+        "p50": 16.6,
+        "p95": 17.6,
+        "p99": 19.6,
+        "dc": 6252,
+        "frames": 601,
+        "nodeCount": 2080,
+        "fullRender": true
+      },
+      {
+        "count": 2560,
+        "stable": false,
+        "fps": 54.2,
+        "p50": 18.3,
+        "p95": 21,
+        "p99": 23.7,
+        "dc": 7692,
+        "frames": 542,
+        "nodeCount": 2560,
+        "fullRender": true
+      },
+      {
+        "count": 2320,
+        "stable": true,
+        "fps": 60,
+        "p50": 16.7,
+        "p95": 17.6,
+        "p99": 19.2,
+        "dc": 979.2,
+        "frames": 600,
+        "nodeCount": 2320,
+        "fullRender": false
+      },
+      {
+        "count": 2440,
+        "stable": true,
+        "fps": 60,
+        "p50": 16.7,
+        "p95": 17.9,
+        "p99": 19.1,
+        "dc": 1090.8,
+        "frames": 600,
+        "nodeCount": 2440,
+        "fullRender": false
+      },
+      {
+        "count": 2500,
+        "stable": true,
+        "fps": 60,
+        "p50": 16.7,
+        "p95": 17.8,
+        "p99": 19.4,
+        "dc": 1115.8,
+        "frames": 600,
+        "nodeCount": 2500,
+        "fullRender": false
+      },
+      {
+        "count": 2530,
+        "stable": true,
+        "fps": 59.9,
+        "p50": 16.7,
+        "p95": 17.8,
+        "p99": 20.2,
+        "dc": 1072.8,
+        "frames": 599,
+        "nodeCount": 2530,
+        "fullRender": false
+      },
+      {
+        "count": 2550,
+        "stable": true,
+        "fps": 59.8,
+        "p50": 16.7,
+        "p95": 18.4,
+        "p99": 20.6,
+        "dc": 1141.3,
+        "frames": 598,
+        "nodeCount": 2550,
+        "fullRender": false
+      }
+    ]
+  },
+  "webgpu": {
+    "maxStable": 2290,
+    "firstFail": 2310,
+    "levels": [
+      {
+        "count": 2080,
+        "stable": true,
+        "fps": 59.4,
+        "p50": 16.7,
+        "p95": 19.6,
+        "p99": 23.2,
+        "dc": 2,
+        "frames": 594,
+        "nodeCount": 2080,
+        "fullRender": true
+      },
+      {
+        "count": 2560,
+        "stable": false,
+        "fps": 52.2,
+        "p50": 18.8,
+        "p95": 22.4,
+        "p99": 25.1,
+        "dc": 2,
+        "frames": 522,
+        "nodeCount": 2560,
+        "fullRender": true
+      },
+      {
+        "count": 2320,
+        "stable": false,
+        "fps": 55.2,
+        "p50": 17.7,
+        "p95": 21.6,
+        "p99": 25.9,
+        "dc": 2,
+        "frames": 553,
+        "nodeCount": 2320,
+        "fullRender": true
+      },
+      {
+        "count": 2200,
+        "stable": true,
+        "fps": 59.8,
+        "p50": 16.7,
+        "p95": 18.4,
+        "p99": 21.8,
+        "dc": 1,
+        "frames": 599,
+        "nodeCount": 2200,
+        "fullRender": true
+      },
+      {
+        "count": 2260,
+        "stable": true,
+        "fps": 59.2,
+        "p50": 16.7,
+        "p95": 19.6,
+        "p99": 22.4,
+        "dc": 1,
+        "frames": 592,
+        "nodeCount": 2260,
+        "fullRender": true
+      },
+      {
+        "count": 2290,
+        "stable": true,
+        "fps": 59.7,
+        "p50": 16.6,
+        "p95": 19.4,
+        "p99": 23.2,
+        "dc": 1,
+        "frames": 597,
+        "nodeCount": 2290,
+        "fullRender": true
+      },
+      {
+        "count": 2310,
+        "stable": false,
+        "fps": 59,
+        "p50": 16.6,
+        "p95": 20.4,
+        "p99": 25.7,
+        "dc": 1,
+        "frames": 590,
+        "nodeCount": 2310,
+        "fullRender": true
+      }
+    ]
+  },
+  "adjusted": {
+    "webglCap": 2080,
+    "webgpuCap": 2290
+  }
+}

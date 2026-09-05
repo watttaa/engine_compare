@@ -1,0 +1,156 @@
+{
+  "meta": {
+    "engine": "cocos-creator-3.8.8",
+    "variant": "boids3d",
+    "backend": "webgpu",
+    "mode": "autoRamp"
+  },
+  "cap": 3200,
+  "jankAt": 5000,
+  "capped": false,
+  "levels": [
+    {
+      "count": 50,
+      "fps": 60,
+      "p50": 16.66,
+      "p95": 16.87,
+      "p99": 17.1,
+      "p1Low": 18.5,
+      "stdDev": 0.43,
+      "drawCallAvg": 106,
+      "stable": true
+    },
+    {
+      "count": 100,
+      "fps": 54.5,
+      "p50": 16.68,
+      "p95": 33.36,
+      "p99": 33.83,
+      "p1Low": 37.72,
+      "stdDev": 5.14,
+      "drawCallAvg": 107,
+      "stable": false
+    },
+    {
+      "count": 200,
+      "fps": 59,
+      "p50": 16.68,
+      "p95": 17.11,
+      "p99": 26.2,
+      "p1Low": 32.34,
+      "stdDev": 2.72,
+      "drawCallAvg": 106.4,
+      "stable": true
+    },
+    {
+      "count": 400,
+      "fps": 59.5,
+      "p50": 16.66,
+      "p95": 16.84,
+      "p99": 17.23,
+      "p1Low": 25.56,
+      "stdDev": 1.58,
+      "drawCallAvg": 106.5,
+      "stable": true
+    },
+    {
+      "count": 800,
+      "fps": 59,
+      "p50": 16.67,
+      "p95": 16.89,
+      "p99": 33.21,
+      "p1Low": 33.35,
+      "stdDev": 2.16,
+      "drawCallAvg": 108,
+      "stable": true
+    },
+    {
+      "count": 1200,
+      "fps": 58.5,
+      "p50": 16.66,
+      "p95": 17.02,
+      "p99": 33.35,
+      "p1Low": 33.37,
+      "stdDev": 2.62,
+      "drawCallAvg": 108,
+      "stable": true
+    },
+    {
+      "count": 1600,
+      "fps": 58,
+      "p50": 16.66,
+      "p95": 17.22,
+      "p99": 33.37,
+      "p1Low": 33.46,
+      "stdDev": 3.05,
+      "drawCallAvg": 108,
+      "stable": true
+    },
+    {
+      "count": 2000,
+      "fps": 59.5,
+      "p50": 16.68,
+      "p95": 16.95,
+      "p99": 19.4,
+      "p1Low": 26.37,
+      "stdDev": 1.59,
+      "drawCallAvg": 109,
+      "stable": true
+    },
+    {
+      "count": 2400,
+      "fps": 59,
+      "p50": 16.68,
+      "p95": 16.96,
+      "p99": 33.36,
+      "p1Low": 33.45,
+      "stdDev": 2.17,
+      "drawCallAvg": 109,
+      "stable": true
+    },
+    {
+      "count": 2800,
+      "fps": 59.5,
+      "p50": 16.67,
+      "p95": 17.68,
+      "p99": 19.86,
+      "p1Low": 26.57,
+      "stdDev": 1.64,
+      "drawCallAvg": 109,
+      "stable": true
+    },
+    {
+      "count": 3200,
+      "fps": 57.3,
+      "p50": 16.78,
+      "p95": 21.76,
+      "p99": 28.73,
+      "p1Low": 28.99,
+      "stdDev": 2.53,
+      "drawCallAvg": 109,
+      "stable": true
+    },
+    {
+      "count": 4000,
+      "fps": 51.9,
+      "p50": 18.7,
+      "p95": 25.84,
+      "p99": 27.69,
+      "p1Low": 27.75,
+      "stdDev": 3.01,
+      "drawCallAvg": 110,
+      "stable": false
+    },
+    {
+      "count": 5000,
+      "fps": 38.4,
+      "p50": 25.69,
+      "p95": 31.5,
+      "p99": 32.45,
+      "p1Low": 32.45,
+      "stdDev": 2.54,
+      "drawCallAvg": 110,
+      "stable": false
+    }
+  ]
+}

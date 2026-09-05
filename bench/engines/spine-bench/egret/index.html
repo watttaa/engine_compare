@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Egret(自研 5.4.1) 骨骼动画 Benchmark</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#1a1a2e}
+  .egret-player{width:100%;height:100%}
+  #hud{position:fixed;top:8px;left:8px;z-index:9;color:#fff;font:12px/1.6 Consolas,monospace;
+       background:rgba(0,0,0,.65);padding:8px 10px;border-radius:4px}
+  #hud select,#hud input,#hud button{font:12px Consolas;margin-right:4px}
+</style>
+</head>
+<body>
+<div class="egret-player"
+     data-entry-class="SpineBenchMain"
+     data-orientation="auto"
+     data-scale-mode="fixedSize"
+     data-frame-rate="60"
+     data-content-width="1280"
+     data-content-height="720"
+     data-show-fps="false"
+     data-show-log="false"></div>
+
+<!-- sim-core（引擎无关） -->
+<script src="../../../sim-core/stats.js"></script>
+<script src="../../../sim-core/bench-runner.js"></script>
+<!-- 骨骼场景仿真 -->
+<script src="../spine-sim.js"></script>
+
+<!-- ?debug=1 时渲染可走格子叠加层（同游戏 CSceneDevBlockShape 逻辑） -->
+<script>
+  (function () {
+    if (!/[?&]debug=1/.test(location.search)) return;
+    var NAV, CELL, RECTS;
+    function drawOverlay() {
+      NAV   = window.SpineSim && SpineSim.NAV_GRID;
+      CELL  = window.SpineSim && SpineSim.CELL_SIZE;
+      RECTS = window.SpineSim && SpineSim.WALKABLE_RECTS;
+      if (!NAV || !CELL) { requestAnimationFrame(drawOverlay); return; }
+
+      var cvs = document.createElement('canvas');
+      cvs.width = 1280; cvs.height = 720;
+      cvs.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:99;opacity:0.55';
+      document.body.appendChild(cvs);
+      var ctx = cvs.getContext('2d');
+
+      for (var y = 0; y < NAV.cellH; y++) {
+        for (var x = 0; x < NAV.cellW; x++) {
+          if (NAV.isWalkable(x, y)) {
+            ctx.fillStyle = 'rgba(80,230,80,0.5)';
+          } else {
+            ctx.fillStyle = 'rgba(255,60,60,0.25)';
+          }
+          ctx.fillRect(x * CELL + 1, y * CELL + 1, CELL - 2, CELL - 2);
+        }
+      }
+      // 标注行号方便对照
+      ctx.fillStyle = '#fff';
+      ctx.font = '10px monospace';
+      for (var r = 0; r < NAV.cellH; r++) {
+        ctx.fillText('r' + r, 2, r * CELL + 14);
+      }
+    }
+    requestAnimationFrame(drawOverlay);
+  })();
+</script>
+
+<!-- WebGL drawCall 探针：必须在引擎脚本之前安装 -->
+<script>
+  (function () {
+    var p1 = window.WebGLRenderingContext && WebGLRenderingContext.prototype;
+    var p2 = window.WebGL2RenderingContext && WebGL2RenderingContext.prototype;
+    window.__webglProbe = { drawTotal: 0, frameTotal: 0, lastDraw: 0, lastFrame: 0 };
+    function hook(p) {
+      if (!p || p.__benchDrawHooked) return;
+      p.__benchDrawHooked = true;
+      var de = p.drawElements, da = p.drawArrays;
+      p.drawElements = function () { window.__webglProbe.drawTotal++; return de.apply(this, arguments); };
+      p.drawArrays = function () { window.__webglProbe.drawTotal++; return da.apply(this, arguments); };
+    }
+    hook(p1); hook(p2);
+    (function fc() { window.__webglProbe.frameTotal++; requestAnimationFrame(fc); })();
+  })();
+</script>
+
+<!-- 自研 Egret 引擎 -->
+<script src="../../egret-engine/egret.js"></script>
+<script src="../../egret-engine/egret.web.js"></script>
+<!-- Egret Spine 3.8 运行时 -->
+<script src="../../../../egret-selfdev/5.4.1/build/egret-spine/egret-spine.js"></script>
+
+<!-- 适配器 -->
+<script src="main.js"></script>
+<script>
+  (async function () {
+    var forced = new URLSearchParams(location.search).get('backend');
+    var backend = 'webgl';
+    if (forced === 'webgpu') {
+      try {
+        var mod = await import('../../egret-webgpu/webgpu-dist/egret-webgpu-boot.js');
+        var r = await mod.installWebGPUBackendNative({});
+        if (r.backend === 'webgpu' && r.renderer) { backend = 'webgpu'; window.__webgpu = r; }
+      } catch (e) { console.warn('[spine-bench] WebGPU 回退 WebGL:', e); }
+    }
+    window.__effectiveBackend = backend;
+    egret.runEgret({
+      renderMode: backend === 'webgpu' ? 'webgpu' : 'webgl',
+      audioType: 0,
+      calculateCanvasScaleFactor: function () { return window.devicePixelRatio || 1; }
+    });
+  })();
+</script>
+</body>
+</html>

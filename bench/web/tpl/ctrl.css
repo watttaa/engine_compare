@@ -16,6 +16,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
 #ctrl .lbl{width:46px;color:#8aa0b4;flex:none;font-size:12px}
 #ctrl select{background:#0d1218;color:#e6edf3;border:1px solid #33475a;border-radius:7px;
   padding:4px 8px;font-size:12px;flex:1;min-width:120px}
+#ctrl input{background:#0d1218;color:#e6edf3;border:1px solid #33475a;border-radius:7px;
+  padding:4px 8px;font-size:12px;width:90px}
 #ctrl button{background:#1d2833;color:#cdd9e5;border:1px solid #33475a;border-radius:7px;
   padding:5px 12px;cursor:pointer;font-size:12px}
 #ctrl button:hover:not(:disabled){background:#27405f}

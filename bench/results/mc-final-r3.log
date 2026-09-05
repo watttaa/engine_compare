@@ -1,0 +1,94 @@
+=== 臂1: WebGL 原版（IgnoreSelf，引擎合批已验证不可用→全黑）===
+    [acc] render/帧=6.54ms write=0ms flush=0ms heap=19MB
+  [webgl-original] 承载力压测 | 变体: M2  阶段: 倍增粗测 | 当前档位: 2080 角色 | 状态: 预热 3s + 采样 10s
+    [acc] render/帧=11.09ms write=0ms flush=0ms heap=45MB
+  [webgl-original] 承载力压测 | 变体: M2  阶段: 倍增粗测 | 当前档位: 2560 角色 | 状态: 预热 3s + 采样 10s
+    [acc] render/帧=10.61ms write=0ms flush=0ms heap=88MB
+    [acc] render/帧=10.97ms write=0ms flush=0ms heap=87MB
+    [acc] render/帧=11.19ms write=0ms flush=0ms heap=106MB
+  [webgl-original] 承载力压测 | 变体: M2  阶段: 临界补测 | 当前档位: 2320 角色 | 状态: 预热 3s + 采样 10s
+    [acc] render/帧=11.09ms write=0ms flush=0ms heap=117MB
+    [acc] render/帧=10.97ms write=0ms flush=0ms heap=86MB
+  [webgl-original] 承载力压测 | 变体: M2  阶段: 临界补测 | 当前档位: 2440 角色 | 状态: 预热 3s + 采样 10s
+    [acc] render/帧=10.75ms write=0ms flush=0ms heap=80MB
+    [acc] render/帧=10.47ms write=0ms flush=0ms heap=76MB
+  [webgl-original] 承载力压测 | 变体: M2  阶段: 临界补测 | 当前档位: 2380 角色 | 状态: 预热 3s + 采样 10s
+    [acc] render/帧=10.21ms write=0ms flush=0ms heap=76MB
+    [acc] render/帧=10.3ms write=0ms flush=0ms heap=66MB
+  [webgl-original] 承载力压测 | 变体: M2  阶段: 临界补测 | 当前档位: 2410 角色 | 状态: 预热 3s + 采样 10s
+    [acc] render/帧=10.39ms write=0ms flush=0ms heap=62MB
+    [acc] render/帧=10.43ms write=0ms flush=0ms heap=65MB
+  [webgl-original] 承载力压测 | 变体: M2  阶段: 临界补测 | 当前档位: 2400 角色 | 状态: 预热 3s + 采样 10s
+    [acc] render/帧=10.48ms write=0ms flush=0ms heap=63MB
+    [acc] render/帧=10.52ms write=0ms flush=0ms heap=82MB
+  最大稳定: 2380  首次失败: 2400
+=== 臂2: WebGPU 实例化层（channel=instanced）===
+    [gpu] gpuMs=0  heap=72MB
+  [webgpu-instanced] 承载力压测 | 变体: M2  阶段: 倍增粗测 | 当前档位: 2080 角色 | 状态: 预热 3s + 采样 10s
+    [acc] render/帧=14.44ms write=0ms flush=0ms heap=122MB
+    [gpu] gpuMs=1.92  heap=166MB
+    [acc] render/帧=13.64ms write=0ms flush=0ms heap=209MB
+    [gpu] gpuMs=3.95  heap=110MB
+    [acc] render/帧=13.59ms write=0ms flush=0ms heap=135MB
+  [webgpu-instanced] 承载力压测 | 变体: M2  阶段: 临界补测 | 当前档位: 1040 角色 | 状态: 预热 3s + 采样 10s
+    [gpu] gpuMs=0.69  heap=151MB
+    [acc] render/帧=12.31ms write=0ms flush=0ms heap=176MB
+    [gpu] gpuMs=3.1  heap=215MB
+    [acc] render/帧=10.83ms write=0ms flush=0ms heap=233MB
+  [webgpu-instanced] 承载力压测 | 变体: M2  阶段: 临界补测 | 当前档位: 1560 角色 | 状态: 预热 3s + 采样 10s
+    [gpu] gpuMs=5.08  heap=277MB
+    [acc] render/帧=10.5ms write=0ms flush=0ms heap=302MB
+    [gpu] gpuMs=5.18  heap=150MB
+  [webgpu-instanced] 承载力压测 | 变体: M2  阶段: 临界补测 | 当前档位: 1820 角色 | 状态: 预热 3s + 采样 10s
+    [acc] render/帧=10.41ms write=0ms flush=0ms heap=188MB
+    [gpu] gpuMs=4.69  heap=237MB
+    [acc] render/帧=10.5ms write=0ms flush=0ms heap=280MB
+    [gpu] gpuMs=4.46  heap=318MB
+    [acc] render/帧=10.6ms write=0ms flush=0ms heap=359MB
+  [webgpu-instanced] 承载力压测 | 变体: M2  阶段: 临界补测 | 当前档位: 1950 角色 | 状态: 预热 3s + 采样 10s
+    [gpu] gpuMs=5.63  heap=165MB
+    [acc] render/帧=10.75ms write=0ms flush=0ms heap=181MB
+    [gpu] gpuMs=4.99  heap=231MB
+    [acc] render/帧=10.87ms write=0ms flush=0ms heap=276MB
+  [webgpu-instanced] 承载力压测 | 变体: M2  阶段: 临界补测 | 当前档位: 1890 角色 | 状态: 预热 3s + 采样 10s
+    [gpu] gpuMs=2.32  heap=317MB
+    [acc] render/帧=10.97ms write=0ms flush=0ms heap=352MB
+    [gpu] gpuMs=2.63  heap=416MB
+    [acc] render/帧=11.04ms write=0ms flush=0ms heap=133MB
+    [gpu] gpuMs=3.46  heap=198MB
+  [webgpu-instanced] 承载力压测 | 变体: M2  阶段: 临界补测 | 当前档位: 1860 角色 | 状态: 预热 3s + 采样 10s
+    [acc] render/帧=11ms write=0ms flush=0ms heap=226MB
+    [gpu] gpuMs=3.5  heap=262MB
+    [acc] render/帧=10.7ms write=0ms flush=0ms heap=305MB
+    [gpu] gpuMs=3.01  heap=348MB
+  [webgpu-instanced] 承载力压测 | 变体: M2  阶段: 临界补测 | 当前档位: 1880 角色 | 状态: 预热 3s + 采样 10s
+    [acc] render/帧=10.51ms write=0ms flush=0ms heap=123MB
+    [gpu] gpuMs=1.96  heap=183MB
+    [acc] render/帧=10.33ms write=0ms flush=0ms heap=209MB
+  最大稳定: 1880  首次失败: 1890
+
+通道校验: webgpu 臂 instanced 通道样本数 = 0 / 8
+
+修正后真实上限:  WebGL=2380  WebGPU实例层=1880  提升=-21.0%
+
+===== 同档位对比（fps / p50 / p95 / p99 / drawcall）=====
+count |     WebGL 原版            |     WebGPU 实例化层
+------+---------------------------+---------------------------
+ 1040 | -                         | 60fps p95=17.6 dc=2
+ 1560 | -                         | 59.8fps p95=18.6 dc=2
+ 1820 | -                         | 58.2fps p95=20 dc=2
+ 1860 | -                         | 59.8fps p95=18.6 dc=2
+ 1880 | -                         | 59.5fps p95=19.5 dc=2
+ 1890 | -                         | 55.7fps p95=22.3 dc=2 X
+ 1950 | -                         | 54.4fps p95=21.7 dc=2 X
+ 2080 | 59.9fps p95=18.6 dc=6252  | 50.2fps p95=25 dc=2 X
+ 2320 | 59.5fps p95=19.5 dc=6972  | -
+ 2380 | 58.3fps p95=20 dc=7152    | -
+ 2400 | 57.1fps p95=21.2 dc=7212 X | -
+ 2410 | 57.5fps p95=20.5 dc=7242 X | -
+ 2440 | 58.3fps p95=21.7 dc=7332 X | -
+ 2560 | 55.4fps p95=21.4 dc=7692 X | -
+
+maxStable:  WebGL=2380  WebGPU实例层=1880  提升=-21.0%
+
+已保存: d:\engine_compare\bench\results\mc-final-compare.json

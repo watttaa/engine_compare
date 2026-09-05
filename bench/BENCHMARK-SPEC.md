@@ -113,14 +113,17 @@ ramp：起始 100 → 每 2s **+200** → 同判定停。协议同 1.4。
 
 ### 3.2 数量档位（3D 负载重，档位低于 2D）
 
-| 档 | 鱼数 | 说明 |
-|---|---|---|
-| L1 | **50** | — |
-| L2 | **100** | — |
-| L3 | **200** | — |
-| L4 | **400** | 极限 |
-
-ramp：起始 50 → 每 2s **+50** → 同判定停。
+> 2026-09-03 实施更新：GPU instancing 对齐后单引擎可扛 2 万+，原 4 档不足以压出差异。
+> 实际 ramp：起始 50 → 阶梯数组 [50,100,200,400,800,1200,1600,2000,2400,2800,3200,4000,5000,6400,8000,10000,12000,15000,18000,22000,26000,30000,40000,50000]（峰值 50000）。
+> 首帧稳定判定不变（fps≥55 稳定 / <50 掉帧，连续 2 档掉帧停）。
+> 原 L1-L4（50/100/200/400）保留为 fixed 快测档。
+>
+> 2026-09-04 二次更新（当前生效）：
+> - 粗梯 20 档 [50,500,2000,5000,8000,12000,16000,20000,24000,28000,32000,36000,40000,45000,50000,60000,70000,80000,90000,100000]（峰值 100000），跑完不终止；
+> - 临界点 = 首个未达稳定门槛（fps≥55 且 p95≤18.2ms）的档位，命中后 +500 细扫（起扫点 = 最后稳定档之上，≤16 档，连 3 档硬掉帧收）；
+> - **鱼种分布 v2**：Big 2%/种、Medium 8%/种、Small 补满 —— 大/中鱼随总量线性增长（旧 fishSetting=2 封顶公式使 5 万后负载恒定，无法压出差异）；
+> - 分布公式两引擎逐字对齐：Cocos `FishBench3D.buildDefs` / Laya `Main.fishCounts`；
+> - ⚠ 分布 v2 生效后，旧分布的历史数据全部作废，跨版本不可比。
 
 ### 3.3 3D 专属指标
 
@@ -272,6 +275,9 @@ ramp：起始 20 → 每 2s **+20** → 同判定停。
 | 2 | antialias:false（三引擎 WebGL 上下文） | ✅ Egret 默认关（源码确认 `egret.web.js:5468`）；Cocos 顶层设 `macro.ENABLE_WEBGL_ANTIALIAS=false`；Laya `Config.isAntialias=false` |
 | 3 | GPU 信息记录（WebGL debug_renderer_info / WebGPU adapter.info） | ✅ `captureGpuInfo()` 已加进 stats.js，bench-runner 两模式调用，JSON 输出 gpuVendor/gpuRenderer，三份 sim-core 已同步 |
 | 4 | Laya 视口固定（stage 大小不受窗口影响） | ✅ `setScreenSize(1280,720)` + `SCALE_NOSCALE` |
-| 5 | 3D 水族馆（两引擎适配器 + 模型管线） | ❌ 全新开发 |
+| 5 | 3D 水族馆（两引擎适配器 + 模型管线） | ✅ boids3d 已建成：Laya/Cocos 均 GPU instancing（单批上限同为 1024），shader 数学逐行对齐（SRGBToLinear 平方 + ACES + sqrt 输出）；峰值 50000 |
 | 6 | Egret WebGPU 入口（fish-demo1 方案：dist 产物 + renderMode:'webgpu'） | ❌ 待接 |
 | 7 | Cocos WebGPU 切换（renderMode=4 或构建选择） | ✅ 后端按 navigator.gpu 自动探测（原硬编码 webgl2 已改） |
+| 8 | 3D 渲染分辨率固定 | ✅ dashboard 壳页 `boids3d.html` iframe 固定 1280×720（DPR 跟随系统） |
+| 9 | 3D GPU 信息采集（gpuVendor/gpuRenderer 进 JSON meta 与 levels） | ✅ Laya `gpuInfo()` / Cocos stats.captureGpuInfo |
+| 10 | Laya WebGPU 3D 接入 / Cocos 3D WebGPU 实测 | ✅ **Laya WebGPU (LayaX) 有效且为最强臂**（statAgent 证据链）：LayaX 是 GPU-driven 管线——Rust 侧 GPU 剔除 + indirect draw，**CT_3DDrawCall 恒定 28-30 与鱼数无关**，CT_Triangle 随鱼数线性增长（~240 tris/鱼），100000 鱼 @60fps 真实（v2 分布下三角形基数随鱼数精确 scaling）。注意：**JS 原型钩子（GPURenderPassEncoder.draw）看不见原生/WASM 层提交**（Conch `_nativeObj` 架构），JS 侧 dc/inst 恒 ~0 属架构盲区而非未渲染；诊断以 `LayaGL.statAgent`（枚举：25=CT_3DDrawCall 26=CT_DrawCall 27=CT_IndirectDrawCall 51=CT_Triangle 59=C_MeshRenderCount）为准，探针已加 statAgent dump。场景侧必要设置：①4 个自定义 Shader3D 显式 `_enableInstancing=true`（否则批次代理 `_canBatch` 永假）；②`camera.useOcclusionCulling=false`（鱼节点 Bounds 为参数假矩阵的 origin 假 AABB，遮挡测试大面积误剔）；③LayaX 渲染流程未挂批次代理为引擎级缺口（LayaXRender3DProcess 无 BatchModule 注册），但 GPU-driven 路径不依赖它。✅ Cocos WebGPU 可用：构建勾选 useWebGPU（renderMode:4），但 Chrome Web 落 ANGLE D3D11，且 CPU 驱动提交使其随鱼数掉帧（20000@28.8fps 真实负载） |

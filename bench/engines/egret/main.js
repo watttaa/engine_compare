@@ -18,8 +18,8 @@
     'rabbitv3_neo.png', 'rabbitv3_sonic.png', 'rabbitv3_spidey.png', 'rabbitv3_stormtrooper.png',
     'rabbitv3_superman.png', 'rabbitv3_tron.png', 'rabbitv3_wolverine.png', 'rabbitv3_frankenstein.png'
   ];
-  var FISH_IMGS = [ // boids 5 鱼种 = 前 5 张变体图（与 cocos/laya 适配器一致）
-    'rabbitv3_ash.png', 'rabbitv3_batman.png', 'rabbitv3_bb8.png', 'rabbitv3_neo.png', 'rabbitv3_sonic.png'
+  var FISH_IMGS = [ // boids 5 鱼种（3 张真鱼图 + 复用凑 5 种，species%5 轮换）
+    'fish/fish_1.png', 'fish/fish_2.png', 'fish/fish_3.png', 'fish/fish_1.png', 'fish/fish_2.png'
   ];
 
   // ---------------- 资源：img -> egret.Texture ----------------
@@ -34,6 +34,11 @@
 
   function texFrom(source) {
     var bd = new egret.BitmapData(source);
+    // 动态合图（TextureAtlasManager）以 uriValue 作 grid 唯一键。uriValue 是只读 getter，
+    // 由 bd.url 的 setter 派生（openAutoBatch 为 true 时：$uriValue = hashCode(url)）。
+    // 故给每张运行时图设唯一 url → 引擎自动生成唯一 uriValue → 合图正常工作（不改引擎）。
+    var uniqUrl = source && source.src ? source.src : ('rt_' + (texFrom._seq = (texFrom._seq || 0) + 1));
+    bd.url = uniqUrl;
     var t = new egret.Texture();
     t.bitmapData = bd;
     return t;
@@ -46,6 +51,8 @@
     this.nodes = [];           // egret.Bitmap 数组，与 sim.list 一一对应
     this.variant = 'V1';
     this.textures = [];
+    this.bgTex = null;       // boids 背景纹理
+    this._bg = null;         // 背景 Bitmap
     this._extra = [];          // V3 的 rotSpeed / phase
     this._lastTick = 0;
     this.mode = 'bunny';       // bunny | boids
@@ -59,16 +66,23 @@
     this.sim = this.mode === 'boids'
       ? new BoidsSim(b.right - b.left, b.bottom - b.top)
       : new BunnySim(b);
+    // boids 模式：背景图（最底层）
+    if (this.mode === 'boids' && this.bgTex) {
+      var bg = new egret.Bitmap(this.bgTex);
+      bg.width = b.right - b.left;
+      bg.height = b.bottom - b.top;
+      this.root.addChildAt(bg, 0);
+      this._bg = bg;
+    }
     // 重编引擎无 startGetPerformance（API 已裁剪），drawCall 走 __webglProbe hook / __webgpu batch 计数
     if (egret.sys.startGetPerformance) egret.sys.startGetPerformance(1000);
-    // 重置 WebGL probe 差值基准（init 在每次测试开始/预热前被调用）
-    if (window.__webglProbe) window.__webglProbe.__lastRead = window.__webglProbe.drawTotal;
   };
 
   EgretAdapter.prototype.clearAll = function () {
     this.root.removeChildren();
     this.nodes.length = 0;
     this._extra.length = 0;
+    this._bg = null;
   };
 
   EgretAdapter.prototype._makeNode = function (i) {
@@ -118,7 +132,14 @@
       for (i = 0; i < len; i++) {
         nodes[i].x = list[i].x;
         nodes[i].y = list[i].y;
-        nodes[i].rotation = list[i].angle * 57.29577951;
+        // 鱼贴图朝左。angle 为前进方向（弧度，0=右 π/2=下 π=左，屏幕坐标）。
+        // 朝右（cos>0）水平翻转；rotation = 相对左向的偏转角
+        var cosA = Math.cos(list[i].angle);
+        var s = list[i].scale || 1;
+        nodes[i].scaleX = (cosA > 0 ? -s : s);
+        nodes[i].scaleY = s;
+        var tilt = cosA > 0 ? list[i].angle : (list[i].angle - Math.PI);
+        nodes[i].rotation = tilt * 57.29577951;
       }
     } else {
       this.sim.update(); // bunny 原版按帧推进
@@ -163,6 +184,17 @@
     return info ? info.drawCall : -1;
   };
 
+  EgretAdapter.prototype.readBenchMetrics = function () {
+    return {
+      actualBackend: window.__effectiveBackend === 'webgpu' ? 'webgpu' : 'webgl',
+      renderWidth: this.root.stage.stageWidth,
+      renderHeight: this.root.stage.stageHeight,
+      antialias: false,
+      workloadClass: this.variant === 'V4' ? 'finite-multi-texture-pressure' : 'standard',
+      textureCount: this.variant === 'V1' || this.variant === 'V3' ? 1 : this.variant === 'V2' ? 8 : 12
+    };
+  };
+
   EgretAdapter.prototype.nodeCount = function () {
     return this.nodes.length;
   };
@@ -178,6 +210,14 @@
     var self = this;
     var stage = this.stage;
     var bounds = { left: 0, top: 0, right: stage.stageWidth, bottom: stage.stageHeight };
+
+    // 【动态合图·默认开启】Egret WebGL 跨纹理合批靠 TextureAtlasManager（把多张散图打进共享大图集
+    // → 同 GL 纹理 → 同纹理合批）。此前因运行时造图缺 uriValue 导致 grid 冲突/白屏，texFrom 已补齐唯一
+    // uriValue，故此处默认开启，发挥 Egret WebGL 真实合批能力。?autobatch=0 可关闭作对照。
+    var abMode = new URLSearchParams(location.search).get('autobatch');
+    if (egret.sys && abMode !== '0') {
+      egret.sys.openAutoBatch = true;
+    }
 
     var adapter = new EgretAdapter(this);
     var stats = new BenchStats();
@@ -217,27 +257,71 @@
       '<option value="V1">Bunny V1 同纹理合批</option>' +
       '<option value="V2">Bunny V2 atlas多帧</option>' +
       '<option value="V3">Bunny V3 随机变换</option>' +
-      '<option value="V4">Bunny V4 不合批</option>' +
+      '<option value="V4">Bunny V4 12纹理压力</option>' +
       '<option value="boids">水族馆 2D Boids</option>' +
       '</select></div>' +
       '<div class="row"><span class="lbl">数量</span>' +
       '<input id="cnt" type="number" value="10000" step="1000">' +
       '<button id="fixed" class="primary">固定采样</button>' +
-      '<button id="ramp">阶梯压测</button></div>' +
+      '<button id="ramp">阶梯压测</button>' +
+      '<button id="blogBtn">📋 复制日志</button></div>' +
       '<div class="live" id="out">待命中…</div>' +
       '<div class="tip">固定采样：预热 3s + 采样 10s 出 P50/P95/P99；阶梯压测：每 2s +1000，跌破 55fps 持续 2s 判定承载力。结果 JSON 自动复制。</div>';
     document.body.appendChild(hud);
     var $v = document.getElementById('bv'), $c = document.getElementById('cnt'),
       $out = document.getElementById('out');
 
+    // ---- 累积日志捕获（console 全量 + 页面错误，供一键复制诊断）----
+    var logLines = [];
+    window.__benchLog = logLines;
+    logLines.push('[boot] backend=' + (window.__effectiveBackend || 'webgl') +
+      ' navigator.gpu=' + ('gpu' in navigator));
+    ['log', 'warn', 'error'].forEach(function (m) {
+      var orig = console[m] ? console[m].bind(console) : function () { };
+      console[m] = function () {
+        try {
+          var parts = [];
+          for (var i = 0; i < arguments.length; i++) {
+            var a = arguments[i];
+            parts.push(typeof a === 'object' ? JSON.stringify(a).slice(0, 300) : String(a).slice(0, 300));
+          }
+          logLines.push('[' + m + '] ' + parts.join(' '));
+          if (logLines.length > 300) logLines.splice(0, logLines.length - 300);
+        } catch (e) { /* 忽略序列化失败 */ }
+        orig.apply(null, arguments);
+      };
+    });
+    window.addEventListener('error', function (e) {
+      logLines.push('[pageerror] ' + (e.message || e.error) + ' @' + (e.filename || '') + ':' + (e.lineno || ''));
+    });
+    document.getElementById('blogBtn').onclick = function () {
+      var text = logLines.join('\n');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          document.getElementById('blogBtn').textContent = '✅ 已复制(' + logLines.length + '行)';
+          setTimeout(function () { document.getElementById('blogBtn').textContent = '📋 复制日志'; }, 2000);
+        }, function () { window.prompt('剪贴板被拒，手动复制：', text); });
+      } else {
+        window.prompt('剪贴板不可用，手动复制：', text);
+      }
+    };
+
     function loadAssets(variant, cb) {
       var names = variant === 'boids' ? FISH_IMGS
         : variant === 'V1' ? BUNNY_IMGS.slice(0, 1)
           : variant === 'V2' ? BUNNY_IMGS.slice(0, 8)
             : BUNNY_IMGS; // V4：12 张互不相同纹理循环，相邻节点必不合批
+      // boids 额外加载背景图
+      var bgPromise = variant === 'boids'
+        ? loadImage('../../assets/aquarium_bg.png')
+        : Promise.resolve(null);
       Promise.all(names.map(function (n) { return loadImage('../../assets/' + n); }))
         .then(function (imgs) {
           adapter.textures = imgs.map(texFrom);
+          return bgPromise;
+        })
+        .then(function (bgImg) {
+          if (bgImg) adapter.bgTex = texFrom(bgImg);
           cb();
         });
     }
@@ -279,7 +363,8 @@
       return false;
     }, this);
 
-    // 自动测试：?auto=1&variant=V1&count=10000（编排页 iframe 用，进入即跑固定采样）
+    // 自动测试：?auto=1&mode=fixed|ramp&variant=V1&count=10000（编排页 iframe 用）
+    // mode=ramp：承载力阶梯（autoRamp，出 cap + 逐档曲线），与 3D 水族馆/总控 RAMP_SCENES 口径一致
     var q = new URLSearchParams(location.search);
     if (q.get('auto') === '1') {
       window.__benchAutoStarted = true;
@@ -287,14 +372,80 @@
       var ac = parseInt(q.get('count') || '10000', 10) || 10000;
       $v.value = av; $c.value = String(ac);
       loadAssets(av, function () {
-        runner.fixedRun({
-          engine: 'egret-selfdev-5.4.1', variant: av, backend: CUR_BACKEND,
-          count: ac, bounds: bounds
-        });
-        $out.textContent = '自动测试运行中…';
+        if (q.get('mode') === 'ramp') {
+          egretRamp(runner, av, CUR_BACKEND, $out);
+        } else {
+          runner.fixedRun({
+            engine: 'egret-selfdev-5.4.1', variant: av, backend: CUR_BACKEND,
+            count: ac, bounds: bounds
+          });
+          $out.textContent = '自动测试运行中…';
+        }
       });
     }
   };
+
+  /**
+   * 承载力阶梯（2D 水族馆闭环）：逐档预热+采样，稳定=fps≥55 且 p95≤20ms，
+   * 掉帧档加倍预热重试，临界后 +500 细扫（口径 = sim-core bench-runner.autoRamp）。
+   * 组合结果（cap/levels/runtime 后端校验）经 exportJSON 写 window.__benchLastResult 供总控采集。
+   */
+  function egretRamp(runner, variant, backend, $out) {
+    var requested = new URLSearchParams(location.search).get('backend');
+    var levels = [];
+    runner.autoRamp({
+      engine: 'egret-selfdev-5.4.1', variant: variant, backend: backend,
+      counts: [2000, 5000, 10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000],
+      preWarmSec: 5, sampleSec: 6,
+      onLevel: function (lv) {
+        if (lv.phase === 'retry' && $out) {
+          $out.textContent = '档 ' + lv.count + ' 疑似抖动，加倍预热重测…';
+          return;
+        }
+        if (lv.phase === 'done' && lv.json) {
+          var j = lv.json;
+          levels.push({
+            count: lv.count, fps: j.fps, p50: j.p50, p95: j.p95, p99: j.p99,
+            p1Low: j.p1Low, stdDev: j.stdDev, drawCallAvg: j.drawCallAvg, nodeCount: j.nodeCount,
+            actualBackend: j.actualBackend, backendValid: j.backendValid,
+            gpuVendor: j.gpuVendor, gpuRenderer: j.gpuRenderer,
+            renderWidth: j.renderWidth, renderHeight: j.renderHeight, dpr: j.dpr,
+            stable: lv.stable
+          });
+          if ($out) {
+            $out.style.display = 'block';
+            $out.textContent += '\n  ' + lv.count + ' 只: ' + j.fps + 'fps ' +
+              (lv.stable ? '✓稳' : '✗掉帧') + ' | p95 ' + j.p95 + 'ms | dc ' + j.drawCallAvg;
+          }
+        }
+      },
+      onDone: function (r) {
+        var acts = [];
+        levels.forEach(function (l) {
+          var b = l.actualBackend;
+          if (b && acts.indexOf(b) < 0) acts.push(b);
+        });
+        var rt = acts.length === 1 ? acts[0] : (window.__effectiveBackend || backend);
+        var rv = acts.length === 1 && rt === (requested || 'webgl');
+        var res = {
+          meta: {
+            engine: 'egret-selfdev-5.4.1', variant: variant,
+            backend: rt, requestedBackend: requested || rt, backendValid: rv, mode: 'autoRamp'
+          },
+          cap: r.cap, jankAt: r.jankAt, capped: r.capped, invalidCurve: r.invalidCurve,
+          thresholdAt: r.thresholdAt, fineStart: r.fineStart, fineStep: r.fineStep,
+          levels: levels
+        };
+        window.__benchRampResult = res;
+        BenchRunner.exportJSON(res);
+        if ($out) {
+          $out.textContent += '\n▶ cap=' + r.cap + (r.jankAt != null ? '（掉帧档 ' + r.jankAt + '）' : '') +
+            (rv ? '' : ' ⚠ 运行时后端与请求不符');
+        }
+      }
+    });
+    if ($out) $out.textContent = '阶梯承载力测试中…';
+  }
 
   function __extends(d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
