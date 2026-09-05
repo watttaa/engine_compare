@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>LayaBench_MC 测试床（WebGL）</title>
+<style>html,body{margin:0;padding:0;background:#1a1a2e;overflow:hidden}</style>
+</head>
+<body>
+<script type="text/javascript" src="libs/laya.core.js"></script>
+<script type="text/javascript" src="libs/laya.d3.js"></script>
+<script type="text/javascript" src="libs/laya.webgl_2D.js"></script>
+<script type="text/javascript" src="libs/laya.webgl_3D.js"></script>
+<script type="text/javascript" src="libs/laya.ui2.js"></script>
+<script type="text/javascript" src="js/sim/stats.js"></script>
+<script type="text/javascript" src="js/sim/bench-runner.js"></script>
+<script type="text/javascript" src="js/sim/mc-compare.js"></script>
+<script type="text/javascript" src="js/sim/pathfinding.js"></script>
+<script type="text/javascript" src="js/sim/mc-sim.js"></script>
+<script type="text/javascript" src="js/LayaBench_MC.js"></script>
+<script>
+(function () {
+  const config = JSON.parse(`{"addons":{},"webgpu":false,
+    "resolution":{"designWidth":1280,"designHeight":720,"scaleMode":"fixedheight","alignV":"top","alignH":"left","screenMode":"none","backgroundColor":"#888888"},
+    "2D":{"FPS":60,"isAntialias":false,"useRetinalCanvas":false,"isAlpha":false},
+    "pkgs":[{"path":"","autoLoad":true}]}`);
+  Object.assign(Laya.PlayerConfig, config);
+  Object.assign(Laya.Config, config['2D']);
+  let pkgs = [];
+  for (let pkg of config.pkgs) {
+    const path0 = pkg.path.length > 0 ? (pkg.path + '/') : pkg.path;
+    if (pkg.autoLoad) pkgs.push(pkg);
+  }
+  Laya.addBeforeInitCallback(() => Promise.all(pkgs.map(pkg => Laya.loader.loadPackage(pkg.path))));
+  Laya.init(config.resolution).then(() => {
+    window.LayaBench_MC.start();
+  }).catch(err => console.error('Initialization failed:', err));
+})();
+</script>
+</body>
+</html>

@@ -49,7 +49,7 @@ const __glProbe: any = { drawTotal: 0, frameTotal: 0, lastDraw: 0, lastFrame: 0 
     hookDraws(g.WebGLRenderingContext && g.WebGLRenderingContext.prototype);
     hookDraws(g.WebGL2RenderingContext && g.WebGL2RenderingContext.prototype);
     const origGetExt = g.HTMLCanvasElement.prototype.getContext;
-    g.HTMLCanvasElement.prototype.getContext = function (type: string) {
+    g.HTMLCanvasElement.prototype.getContext = function (this: any, type: string) {
         const ctx = origGetExt.apply(this, arguments as any);
         if (ctx && (type === 'webgl' || type === 'webgl2')) {
             const origGE = (ctx as any).getExtension;
@@ -413,6 +413,7 @@ export class CocosBench_MC extends Component {
         this.adapter = new CocosMCAdapter(this.makeHolder());
         this.stats = new G.BenchStats();
         this.runner = new G.BenchRunner(this.adapter, this.stats);
+        (window as any).__mcAdapter = this.adapter;   // 诊断句柄（对齐 egret）
 
         // 运行时后端探测：WebGL 设备有 gl 属性，WebGPU 没有（不用 navigator.gpu 猜）
         const dev: any = (director.root as any) ? (director.root as any).device : null;
